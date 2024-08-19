@@ -20,11 +20,12 @@ import { toHex } from "@harmoniclabs/uint8array-utils";
 import { webcrypto } from "node:crypto";
 import { sign, verify } from "jsonwebtoken";
 import { URL } from "node:url";
-import { getApiKey, validateApiKey } from "../middlewares/apiKey";
 import rateLimit from "express-rate-limit";
 import RedisStore from "rate-limit-redis";
 import { getClientIp as getClientIpFromReq } from "request-ip";
 import { ipRateLimit } from "../middlewares/ip";
+
+// togliere api_key, sub e unsub
 
 const app = express();
 const http_server = createServer( app );
@@ -37,42 +38,9 @@ const closeMsg = JSON.stringify({
 
 app.set("trust proxy", 1);
 
-const api_key_limiter = rateLimit({
-    windowMs: 86_400_000,
-    limit: async ( req, res ) => {
-        const apiKey = getApiKey( req );
-        if( !apiKey )
-        {
-            res.status(401).send("Missing API key");
-            return 0;
-        }
-        return 0;
-    },
-    keyGenerator: async ( req, res ) => {
-        const apiKey = getApiKey( req );
-        if( !apiKey )
-        {
-            res.status(401).send("Missing API key");
-            return "";
-        }
-        return apiKey;
-    },
-    store: new RedisStore({
-        sendCommand: async (...args: string[]) => {
-            const redis = await getRedisClient();
-            return redis.sendCommand( args );
-        },
-        prefix: "chainsync:mutexo:rl:"
-    }),
-    legacyHeaders: false,
-    standardHeaders: "draft-7"
-});
-
-const limiters = [validateApiKey, api_key_limiter];
+const limiters = [ipRateLimit];
 
 app.get("/wsAuth", ipRateLimit, ...limiters, async ( req, res ) => {
-    const apiKey = getApiKey( req )!;
-
     const redis = await getRedisClient();
     let secretBytes = new Uint8Array( 32 );
     let tokenStr: string;

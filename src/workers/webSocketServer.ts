@@ -20,8 +20,6 @@ import { toHex } from "@harmoniclabs/uint8array-utils";
 import { webcrypto } from "node:crypto";
 import { sign, verify } from "jsonwebtoken";
 import { URL } from "node:url";
-import rateLimit from "express-rate-limit";
-import RedisStore from "rate-limit-redis";
 import { getClientIp as getClientIpFromReq } from "request-ip";
 import { ipRateLimit } from "../middlewares/ip";
 
@@ -38,9 +36,7 @@ const closeMsg = JSON.stringify({
 
 app.set("trust proxy", 1);
 
-const limiters = [ipRateLimit];
-
-app.get("/wsAuth", ipRateLimit, ...limiters, async ( req, res ) => {
+app.get("/wsAuth", ipRateLimit, async ( req, res ) => {
     const redis = await getRedisClient();
     let secretBytes = new Uint8Array( 32 );
     let tokenStr: string;
@@ -205,13 +201,12 @@ parentPort?.on("message", async msg => {
     }
 });
 
-app.post("/addAddrs", ...limiters, async ( req, res ) => {
-    const apiKey = getApiKey( req )!;
-    await addAddrs( req.body, apiKey );
+app.post("/addAddrs", async ( req, res ) => {
+    await addAddrs( req.body );
     res.status(200).send();
 });
 
-app.get("/utxos", ...limiters, async ( req, res ) => {
+app.get("/utxos", async ( req, res ) => {
     res.status(200).send( await queryUtxos( req.body ) )
 });
 
@@ -452,7 +447,7 @@ function sendUtxoQueryRequest( addresses: AddressStr[] ): void
 
 // addAddrs([ "addr_test1wrzefj03mkklj352vueeum984wynqpjsvjxd6qeemfdaa5cd5jrfe" ] );
 
-async function addAddrs( addresses: AddressStr[], apiKey: API_KEY ): Promise<void>
+async function addAddrs( addresses: AddressStr[] ): Promise<void>
 {
     const redis = await getRedisClient();
 
@@ -479,7 +474,7 @@ async function addAddrs( addresses: AddressStr[], apiKey: API_KEY ): Promise<voi
         }
 
         // if this particular API key is not following this address (no matter if it exists or not)
-        if( !await isFollowingAddr( apiKey, addr ) )
+        if( !await isFollowingAddr( addr ) )
         {
             // add the follow
             await followAddr( addr, apiKey );

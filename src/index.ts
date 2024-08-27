@@ -1,16 +1,16 @@
 import { ChainSyncClient, LocalStateQueryClient, Multiplexer } from "@harmoniclabs/ouroboros-miniprotocols-ts";
-import { connect } from "net";
-import { acquire, syncAndAcquire } from "./funcs/syncAndAcquire";
 import { Cbor, CborArray, CborBytes, CborObj, CborTag, LazyCborArray, LazyCborObj } from "@harmoniclabs/cbor";
-import { toHex } from "@harmoniclabs/uint8array-utils";
 import { revertBlocksUntilHash } from "./redis/revertBlocksUntilHash";
-import { Worker } from "node:worker_threads";
 import { Address, AddressStr } from "@harmoniclabs/cardano-ledger-ts";
 import { queryAddrsUtxos } from "./funcs/queryAddrsUtxos";
+import { syncAndAcquire } from "./funcs/syncAndAcquire";
+import { toHex } from "@harmoniclabs/uint8array-utils";
+import { filterInplace } from "./utils/filterInplace";
+import { isObject } from "@harmoniclabs/obj-utils";
 import { saveUtxos } from "./funcs/saveUtxos";
 import { isAddrStr } from "./utils/isAddrStr";
-import { isObject } from "@harmoniclabs/obj-utils";
-import { filterInplace } from "./utils/filterInplace";
+import { Worker } from "node:worker_threads";
+import { connect } from "net";
 
 const webSocketServer = new Worker(__dirname + "/workers/webSocketServer.js");
 const blockParser = new Worker(__dirname + "/workers/blockParser.js");

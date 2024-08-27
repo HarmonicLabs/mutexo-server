@@ -1,4 +1,4 @@
-import { AddressStr, NativeScript, PlutusScriptJsonFormat } from "@harmoniclabs/cardano-ledger-ts";
+import { AddressStr } from "@harmoniclabs/cardano-ledger-ts";
 
 export type AssetJson = { [ name_hex: string ]: `${number}` };
 

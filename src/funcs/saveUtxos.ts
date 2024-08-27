@@ -1,8 +1,8 @@
-import { AddressStr, Hash32, TxOut, TxOutRef, TxOutRefStr, UTxO } from "@harmoniclabs/cardano-ledger-ts";
+import { AddressStr, Hash32, TxOut, TxOutRefStr, UTxO } from "@harmoniclabs/cardano-ledger-ts";
 import { getRedisClient } from "../redis/getRedisClient";
 import { dataToCbor, isData } from "@harmoniclabs/plutus-data";
 import { UTXO_VALUE_PREFIX, UTXO_PREFIX } from "../constants";
-import { ValueJson, UTxOStatus } from "../types/UTxOWithStatus";
+import { ValueJson } from "../types/UTxOWithStatus";
 import { isAddrStr } from "../utils/isAddrStr";
 import { isHex } from "../utils/isHex";
 

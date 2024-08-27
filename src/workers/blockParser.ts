@@ -1,11 +1,11 @@
-import { TxBody, TxOutRefStr, Hash32 } from "@harmoniclabs/cardano-ledger-ts";
-import { Cbor, LazyCborArray, CborArray, CborUInt, CborMap, CborMapEntry, CborObj, CborBytes } from "@harmoniclabs/cbor";
-import { createHash } from "blake2";
-import { parentPort } from "worker_threads";
-import { BlockInfos, TxIO, tryGetBlockInfos } from "../types/BlockInfos";
-import { getRedisClient } from "../redis/getRedisClient";
 import { BLOCKS_QUEQUE_KEY, BLOCK_PREFIX, MAX_N_VOLATILE_BLOCKS, TIP_HASH_KEY, UTXO_PREFIX, UTXO_VALUE_PREFIX } from "../constants";
+import { Cbor, LazyCborArray, CborArray, CborUInt } from "@harmoniclabs/cbor";
+import { BlockInfos, TxIO, tryGetBlockInfos } from "../types/BlockInfos";
+import { TxBody, TxOutRefStr } from "@harmoniclabs/cardano-ledger-ts";
+import { getRedisClient } from "../redis/getRedisClient";
 import { saveTxOut } from "../funcs/saveUtxos";
+import { parentPort } from "worker_threads";
+import { createHash } from "blake2";
 
 function blake2b_256( data: Uint8Array ): string
 {

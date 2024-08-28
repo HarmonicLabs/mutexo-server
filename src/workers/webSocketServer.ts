@@ -1,27 +1,27 @@
-import { parentPort } from "node:worker_threads";
-import { LEAKING_BUCKET_BY_IP_PREFIX, LEAKING_BUCKET_MAX_CAPACITY, LEAKING_BUCKET_TIME, TEMP_AUTH_TOKEN_PREFIX, UTXO_PREFIX, UTXO_VALUE_PREFIX } from "../constants";
-import { AddressStr, TxOutRefStr } from "@harmoniclabs/cardano-ledger-ts";
-import { getRedisClient } from "../redis/getRedisClient";
-import { isAddrStr } from "../utils/isAddrStr";
-import { RawData, WebSocket, WebSocketServer } from "ws";
-import express from "express";
-import { createServer } from "node:http";
-import { unrawData } from "../utils/unrawData";
-import { isTxOutRefStr } from "../utils/isTxOutRefStr";
-import { filterInplace } from "../utils/filterInplace";
-import { ValueJson } from "../types/UTxOWithStatus";
-import { SavedFullTxOut, tryParseSavedTxOut } from "../funcs/saveUtxos";
 import { getClientUtxoSpentSubs, getClientAddrSpentSubs, getClientOutputsSubs, setWsClientIp, getWsClientIp, getClientUtxoFreeSubs, getClientUtxoLockSubs, getClientAddrFreeSubs, getClientAddrLockSubs } from "../wsServer/clientProps";
-import { isObject } from "@harmoniclabs/obj-utils";
-import { tryGetBlockInfos } from "../types/BlockInfos";
+import { LEAKING_BUCKET_BY_IP_PREFIX, LEAKING_BUCKET_MAX_CAPACITY, LEAKING_BUCKET_TIME, TEMP_AUTH_TOKEN_PREFIX, UTXO_PREFIX, UTXO_VALUE_PREFIX } from "../constants";
 import { MutexoServerEvent, tryGetResolvedFreeMsg, tryGetResolvedLockMsg, tryGetSubMsg, tryGetUnsubMsg } from "../wsServer/events";
 import { addressIsFollowed, followAddr, isFollowingAddr } from "../redis/isFollowingAddr";
-import { toHex } from "@harmoniclabs/uint8array-utils";
-import { webcrypto } from "node:crypto";
-import { sign, verify } from "jsonwebtoken";
-import { URL } from "node:url";
+import { AddressStr, TxOutRefStr } from "@harmoniclabs/cardano-ledger-ts";
+import { SavedFullTxOut, tryParseSavedTxOut } from "../funcs/saveUtxos";
 import { getClientIp as getClientIpFromReq } from "request-ip";
+import { getRedisClient } from "../redis/getRedisClient";
+import { RawData, WebSocket, WebSocketServer } from "ws";
+import { isTxOutRefStr } from "../utils/isTxOutRefStr";
+import { filterInplace } from "../utils/filterInplace";
+import { tryGetBlockInfos } from "../types/BlockInfos";
+import { toHex } from "@harmoniclabs/uint8array-utils";
+import { ValueJson } from "../types/UTxOWithStatus";
+import { isObject } from "@harmoniclabs/obj-utils";
+import { parentPort } from "node:worker_threads";
 import { ipRateLimit } from "../middlewares/ip";
+import { isAddrStr } from "../utils/isAddrStr";
+import { unrawData } from "../utils/unrawData";
+import { sign, verify } from "jsonwebtoken";
+import { createServer } from "node:http";
+import { webcrypto } from "node:crypto";
+import { URL } from "node:url";
+import express from "express";
 
 // togliere api_key, sub e unsub
 
@@ -354,27 +354,27 @@ const freeAddressClients: Map<AddressStr, Set<WebSocket>> = new Map();
 /**
  * it adds the "waiting for the utxo to be freed" client to its address lists
  */
-function subClientToFreeAddr( address: AddressStr, client: WebSocket ): void
+function subClientToFreeAddr( addr: AddressStr, client: WebSocket ): void
 {
-    if( !freeAddressClients.has( address ) ) freeAddressClients.set( address, new Set() );
+    if( !freeAddressClients.has( addr ) ) freeAddressClients.set( addr, new Set() );
 
-    const freeAddrInstance = freeAddressClients.get( address )!;
+    const freeAddrInstance = freeAddressClients.get( addr )!;
     if( !freeAddrInstance.has( client ) ) freeAddrInstance.add( client );
     
-    getClientAddrFreeSubs( client ).add( address );
+    getClientAddrFreeSubs( client ).add( addr );
 }
 
 /**
  * it removes the "waiting for the utxo to be freed" client from its address lists
  */
-function unsubClientFromFreeAddr( address: AddressStr, client: WebSocket ): void
+function unsubClientFromFreeAddr( addr: AddressStr, client: WebSocket ): void
 {
-    getClientAddrFreeSubs( client ).delete( address );
+    getClientAddrFreeSubs( client ).delete( addr );
 
-    const freeAddrInstance = freeAddressClients.get( address )!;
+    const freeAddrInstance = freeAddressClients.get( addr )!;
     if( !freeAddrInstance ) return;
 
-    if( freeAddrInstance.size === 0 ) freeAddressClients.delete( address );
+    if( freeAddrInstance.size === 0 ) freeAddressClients.delete( addr );
 }
 
 /**
@@ -386,27 +386,27 @@ const lockedAddressClients: Map<AddressStr, Set<WebSocket>> = new Map();
 /**
  * it adds the "waiting for the utxo to be locked" client to its address lists
  */
-function subClientToLockedAddr( address: AddressStr, client: WebSocket ): void
+function subClientToLockedAddr( addr: AddressStr, client: WebSocket ): void
 {
-    if( !lockedAddressClients.has( address ) ) lockedAddressClients.set( address, new Set() );
+    if( !lockedAddressClients.has( addr ) ) lockedAddressClients.set( addr, new Set() );
 
-    const lockedAddrInstance = lockedAddressClients.get( address )!;
+    const lockedAddrInstance = lockedAddressClients.get( addr )!;
     if( !lockedAddrInstance.has( client ) ) lockedAddrInstance.add( client );
     
-    getClientAddrLockSubs( client ).add( address );
+    getClientAddrLockSubs( client ).add( addr );
 }
 
 /**
  * it removes the "waiting for the utxo to be locked" client from its address lists
  */
-function unsubClientFromLockedAddr( address: AddressStr, client: WebSocket ): void
+function unsubClientFromLockedAddr( addr: AddressStr, client: WebSocket ): void
 {
-    getClientAddrLockSubs( client ).delete( address );
+    getClientAddrLockSubs( client ).delete( addr );
 
-    const lockedAddrInstance = lockedAddressClients.get( address )!;
+    const lockedAddrInstance = lockedAddressClients.get( addr )!;
     if( !lockedAddrInstance ) return;
 
-    if( lockedAddrInstance.size === 0 ) lockedAddressClients.delete( address );
+    if( lockedAddrInstance.size === 0 ) lockedAddressClients.delete( addr );
 }
 
 /**
@@ -414,6 +414,9 @@ function unsubClientFromLockedAddr( address: AddressStr, client: WebSocket ): vo
  */
 const spentUTxOClients: Map<TxOutRefStr, Set<WebSocket>> = new Map();
 
+/**
+ * it adds to the map a client and the utxo he spent
+ */
 function subClientToSpentUTxO( ref: TxOutRefStr, client: WebSocket ): void
 {
     if( spentUTxOClients.has( ref ) ) spentUTxOClients.get( ref )!.add( client );
@@ -422,6 +425,9 @@ function subClientToSpentUTxO( ref: TxOutRefStr, client: WebSocket ): void
     getClientUtxoSpentSubs( client ).add( ref );
 }
 
+/**
+ * it removes from the map a client and the utxo he spent
+ */
 function unsubClientFromSpentUTxO( ref: TxOutRefStr, client: WebSocket ): void
 {
     spentUTxOClients.get( ref )?.delete( client );
@@ -433,6 +439,9 @@ function unsubClientFromSpentUTxO( ref: TxOutRefStr, client: WebSocket ): void
  */
 const spentAddrClients: Map<AddressStr , Set<WebSocket>> = new Map();
 
+/**
+ * it adds to the map a client address which websocket spent a utxo
+ */
 function subClientToSpentAddr( addr: AddressStr, client: WebSocket ): void
 {
     if( spentAddrClients.has( addr ) ) spentAddrClients.get( addr )!.add( client );
@@ -441,6 +450,9 @@ function subClientToSpentAddr( addr: AddressStr, client: WebSocket ): void
     getClientAddrSpentSubs( client ).add( addr );
 }
 
+/**
+ * it removes from the map a client address which websocket spent a utxo
+ */
 function unsubClientFromSpentAddr( addr: AddressStr, client: WebSocket ): void
 {
     spentAddrClients.get( addr )?.delete( client );
@@ -502,11 +514,11 @@ async function addAddrs( addresses: AddressStr[] ): Promise<void>
             // `isFollowingAddr` evaluating to false will take care of adding the address
         }
 
-        // if this particular API key is not following this address (no matter if it exists or not)
+        // if the public API key is not following this address (no matter if it exists or not)
         if( !await isFollowingAddr( addr ) )
         {
             // add the follow
-            await followAddr( addr,  );
+            await followAddr( addr );
         }
     }
 
@@ -550,60 +562,16 @@ async function queryUtxos( refs: TxOutRefStr[] ): Promise<(SavedFullTxOut & { re
     return utxos;
 }
 
-function unsubFreeAddr( client: WebSocket, address: AddressStr )
-{
-
-    let set: Set<WebSocket> | undefined = undefined;
-
-        set = freeAddressClients.get( address );
-        if( set )
-        {
-            set.delete( client )
-            if( set.size === 0 )
-            {
-                api_map.delete(  );
-                if( api_map.size === 0 )
-                {
-                    freeAddressClients.delete( addr );
-                }
-            }
-        }
-}
-
-function unsubAddrLock( client: WebSocket, addr: AddressStr )
-{
-    let set: Set<WebSocket> | undefined = undefined;
-    let api_map: Map<API_KEY, Set<WebSocket>> | undefined = undefined;
-
-    api_map = lockedAddressClients.get( addr );
-    if( api_map )
-    {
-        set = api_map.get(  );
-        if( set )
-        {
-            set.delete( client )
-            if( set.size === 0 )
-            {
-                api_map.delete(  );
-                if( api_map.size === 0 )
-                {
-                    lockedAddressClients.delete( addr );
-                }
-            }
-        }
-    }
-}
-
 function unsubAllSpentUTxO( client: WebSocket )
 {
     const UTXO_SPENT_SUBS = getClientUtxoSpentSubs( client );
-    for( const ref of UTXO_SPENT_SUBS ) unsubClientToUtxoSpent( ref, client );
+    for( const ref of UTXO_SPENT_SUBS ) unsubClientFromSpentUTxO( ref, client );
 }
 
 function unsubAllSpentAddr( client: WebSocket )
 {
     const ADDR_SPENT_SUBS = getClientAddrSpentSubs( client );
-    for( const addr of ADDR_SPENT_SUBS ) unsubClientToAddrSpent( addr, client );
+    for( const addr of ADDR_SPENT_SUBS ) unsubClientFromSpentAddr( addr, client );
 }
 
 function unsubAllOutput( client: WebSocket )
@@ -614,38 +582,26 @@ function unsubAllOutput( client: WebSocket )
 
 function unsubAllFreeUTxO( client: WebSocket )
 {
-    const  = getClientApiKey( client );
-    if( typeof  !== "string" ) return;
-
     const UTXO_FREE_SUBS = getClientUtxoFreeSubs( client );
-    for( const ref of UTXO_FREE_SUBS ) unsubClientFromFreeUTxO( ref, , client );
+    for( const ref of UTXO_FREE_SUBS ) unsubClientFromFreeUTxO( ref, client );
 }
 
 function unsubAllLockedUTxO( client: WebSocket )
 {
-    const  = getClientApiKey( client );
-    if( typeof  !== "string" ) return;
-
     const UTXO_LOCK_SUBS = getClientUtxoLockSubs( client );
-    for( const ref of UTXO_LOCK_SUBS ) unsubClientFromLockedUTxO( ref, , client );
+    for( const ref of UTXO_LOCK_SUBS ) unsubClientFromLockedUTxO( ref, client );
 }
 
 function unsubAllFreeAddr( client: WebSocket )
 {
-    const  = getClientApiKey( client );
-    if( typeof  !== "string" ) return;
-
     const ADDR_FREE_SUBS = getClientAddrFreeSubs( client );
-    for( const addr of ADDR_FREE_SUBS ) unsubClientFromFreeAddr( addr, , client );
+    for( const addr of ADDR_FREE_SUBS ) unsubClientFromFreeAddr( addr, client );
 }
 
 function unsubAllLockedAddr( client: WebSocket )
 {
-    const  = getClientApiKey( client );
-    if( typeof  !== "string" ) return;
-
     const ADDR_LOCK_SUBS = getClientAddrLockSubs( client );
-    for( const addr of ADDR_LOCK_SUBS ) unsubClientToAddrLock( addr, , client );
+    for( const addr of ADDR_LOCK_SUBS ) unsubClientFromLockedAddr( addr, client );
 }
 
 function unsubAll( client: WebSocket )

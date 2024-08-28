@@ -1,4 +1,4 @@
-import { AddressStr, NativeScript, PlutusScriptJsonFormat } from "@harmoniclabs/cardano-ledger-ts";
+import { AddressStr, NativeScript, PlutusScriptJsonFormat, Value } from "@harmoniclabs/cardano-ledger-ts";
 
 export type AssetJson = { [ name_hex: string ]: `${number}` };
 
@@ -31,7 +31,7 @@ export interface RedisScriptBefore extends RedisJSONObject {
     slot: `${number}`;
 }
 
-export interface RedisPlutusScriptJsonFormat<T extends "PlutusScriptV1" | "PlutusScriptV2" = "PlutusScriptV2"> extends RedisJSONObject {
+export interface RedisPlutusScriptJsonFormat<T extends "PlutusScriptV1" | "PlutusScriptV2" | "PlutusScriptV3" = "PlutusScriptV3"> extends RedisJSONObject {
     type: T,
     description: string | null,
     cborHex: string
@@ -40,7 +40,7 @@ export interface RedisPlutusScriptJsonFormat<T extends "PlutusScriptV1" | "Plutu
 export interface UTxOJson {
     address: AddressStr,
     value: ValueJson,
-    datum: string | null
+    datum: string
     refScript: RedisNativeScript | RedisPlutusScriptJsonFormat | null
 }
 

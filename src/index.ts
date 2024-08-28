@@ -88,7 +88,7 @@ void async function main()
         
         revertBlocksUntilHash( hashStr )
         .then( revertedBlocks => {
-
+            
         });
     });
 

@@ -165,6 +165,7 @@ parentPort?.on("message", async msg => {
 
         for( const { ins, outs } of txs )
         {
+            const txHash = outs[0].split("#")[0];
             await Promise.all([
                 Promise.all(
                     ins.map( async inp => {
@@ -174,7 +175,8 @@ parentPort?.on("message", async msg => {
                             type: MutexoServerEvent.Input,
                             data: {
                                 ref: inp,
-                                addr
+                                addr,
+                                txHash
                             }
                         });
                         spentUTxOClients.get( inp )?.forEach( client => client.send( msg ));
@@ -891,7 +893,7 @@ async function handleClientMessage( this: WebSocket, rawData: RawData ): Promise
                     }
                 })
             );
-            emitUtxoFreeEvts( freed,  );
+            emitUtxoFreeEvts( freed );
         }
     }
     // check locks only if no "free" is specified

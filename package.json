@@ -1,5 +1,5 @@
 {
-    "name": "@harmoniclabs/mutexo",
+    "name": "@harmoniclabs/mutexo-server",
     "type": "commonjs",
     "bin": "dist/index.js",
     "scripts": {

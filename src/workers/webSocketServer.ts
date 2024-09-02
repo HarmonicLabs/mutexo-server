@@ -1,8 +1,9 @@
 import { getClientUtxoSpentSubs, getClientAddrSpentSubs, getClientOutputsSubs, setWsClientIp, getWsClientIp, getClientUtxoFreeSubs, getClientUtxoLockSubs, getClientAddrFreeSubs, getClientAddrLockSubs } from "../wsServer/clientProps";
 import { LEAKING_BUCKET_BY_IP_PREFIX, LEAKING_BUCKET_MAX_CAPACITY, LEAKING_BUCKET_TIME, TEMP_AUTH_TOKEN_PREFIX, UTXO_PREFIX, UTXO_VALUE_PREFIX } from "../constants";
+import { MessageClose, MessageError, MessageFailure, MessageFree, MessageInput, MessageLock, MessageOutput, MessageSuccess } from "@harmoniclabs/mutexo-messages";
 import { MutexoServerEvent, tryGetResolvedFreeMsg, tryGetResolvedLockMsg, tryGetSubMsg, tryGetUnsubMsg } from "../wsServer/events";
+import { Address, AddressStr, forceTxOutRef, TxOutRefStr } from "@harmoniclabs/cardano-ledger-ts";
 import { addressIsFollowed, followAddr, isFollowingAddr } from "../redis/isFollowingAddr";
-import { AddressStr, TxOutRefStr } from "@harmoniclabs/cardano-ledger-ts";
 import { SavedFullTxOut, tryParseSavedTxOut } from "../funcs/saveUtxos";
 import { getClientIp as getClientIpFromReq } from "request-ip";
 import { getRedisClient } from "../redis/getRedisClient";
@@ -23,16 +24,25 @@ import { webcrypto } from "node:crypto";
 import { URL } from "node:url";
 import express from "express";
 
-// togliere api_key, sub e unsub
+// close message
+const closeMsg = ( new MessageClose() ).toCborBytes();
+// error messages
+const missingIpMsg = ( new MessageError({ errorType: 1 }) ).toCborBytes();
+const missingAuthTokenMsg = ( new MessageError({ errorType: 2 }) ).toCborBytes();       // to do: create a new "missing auth token" error type
+const invalidAuthTokenMsg = ( new MessageError({ errorType: 2 }) ).toCborBytes();
+const tooManyReqsMsg = ( new MessageError({ errorType: 3 }) ).toCborBytes();
+const addrNotFollowedMsg = ( new MessageError({ errorType: 4 }) ).toCborBytes();
+const utxoNotFoundMsg = ( new MessageError({ errorType: 5 }) ).toCborBytes();
+const unknownSubEvtByAddrMsg = ( new MessageError({ errorType: 6 }) ).toCborBytes();
+const unknownSubEvtByUTxORefMsg = ( new MessageError({ errorType: 7 }) ).toCborBytes();
+const unknownUnsubEvtByAddrMsg = ( new MessageError({ errorType: 8 }) ).toCborBytes();
+const unknownUnsubEvtByUTxORefMsg = ( new MessageError({ errorType: 9 }) ).toCborBytes();
+const unknownUnsubEvtMsg = ( new MessageError({ errorType: 10 }) ).toCborBytes();       // to do: create a new "unknown event to unsubscribe to (no filters)" error type (???)
+
 
 const app = express();
 const http_server = createServer( app );
 const wsServer = new WebSocketServer({ server: http_server, path: "/events", maxPayload: 512 });
-
-const closeMsg = JSON.stringify({
-    type: MutexoServerEvent.Close,
-    data: {}
-});
 
 app.set("trust proxy", 1);
 
@@ -58,16 +68,6 @@ app.get("/wsAuth", ipRateLimit, async ( req, res ) => {
     await redis.expire( key, 30 );
 
     res.status( 200 ).send( tokenStr );
-});
-
-const missingAuthTokenMsg = JSON.stringify({
-    type: MutexoServerEvent.Error,
-    data: { msg: "missing auth token in url params" }
-});
-
-const missingIpMsg = JSON.stringify({
-    type: MutexoServerEvent.Error,
-    data: { msg: "missing Ip" }
 });
 
 async function leakingBucketOp( client: WebSocket ): Promise<number>
@@ -103,10 +103,7 @@ wsServer.on('connection', async ( client, req ) => {
 
     if( !infos )
     {
-        client.send(JSON.stringify({
-            type: MutexoServerEvent.Error,
-            data: { msg: "invalid token; likely expired" }
-        }));
+        client.send( invalidAuthTokenMsg );
         client.terminate();
         return;
     }
@@ -117,10 +114,7 @@ wsServer.on('connection', async ( client, req ) => {
     try {
         stuff = verify( token, Buffer.from( secretHex, "hex" ) );
     } catch {
-        client.send(JSON.stringify({
-            type: MutexoServerEvent.Error,
-            data: { msg: "invalid token" }
-        }));
+        client.send( invalidAuthTokenMsg );
         client.terminate();
         return;
     }
@@ -152,7 +146,13 @@ const pingInterval = setInterval(
     },
     30_000
 );
+
 wsServer.on('close', () => clearInterval( pingInterval ) );
+
+function stringToUint8Array( str: string ): Uint8Array 
+{
+    return new TextEncoder().encode(str);
+}
 
 parentPort?.on("message", async msg => {
     if( !isObject( msg ) ) return;
@@ -171,14 +171,13 @@ parentPort?.on("message", async msg => {
                     ins.map( async inp => {
                         const addr = await redis.hGet( `${UTXO_PREFIX}:${inp}`, "addr" ) as AddressStr | undefined;
                         if( !addr ) return;
-                        const msg = JSON.stringify({
-                            type: MutexoServerEvent.Input,
-                            data: {
-                                ref: inp,
-                                addr,
-                                txHash
-                            }
-                        });
+
+                        const msg = ( new MessageInput({
+                            utxoRef: forceTxOutRef( inp ),
+                            addr: Address.fromString( addr ),
+                            txHash: stringToUint8Array( txHash )
+                        }) ).toCborBytes();
+
                         spentUTxOClients.get( inp )?.forEach( client => client.send( msg ));
                         spentAddrClients.get( addr )?.forEach( client => client.send( msg ));
                     })
@@ -187,13 +186,12 @@ parentPort?.on("message", async msg => {
                     outs.map( async out => {
                         const addr = await redis.hGet( `${UTXO_PREFIX}:${out}`, "addr" ) as AddressStr | undefined;
                         if( !addr ) return;
-                        const msg = JSON.stringify({
-                            type: MutexoServerEvent.Output,
-                            data: {
-                                ref: out,
-                                addr
-                            }
-                        });
+
+                        const msg = ( new MessageOutput({
+                            utxoRef: forceTxOutRef( out ),
+                            addr: Address.fromString( addr )
+                        }) ).toCborBytes();
+
                         outputClients.get( addr )?.forEach( client => client.send( msg ));
                     })
                 )
@@ -623,11 +621,6 @@ function terminateClient( client: WebSocket )
     client.terminate();
 }
 
-const tooManyReqsMsg = JSON.stringify({
-    type: MutexoServerEvent.Error,
-    data: { msg: "be patient! too many requests; wait a few seconds" }
-});
-
 /**
  * - sub + filters
  * - unsub
@@ -688,13 +681,7 @@ async function handleClientMessage( this: WebSocket, rawData: RawData ): Promise
                 .then( isFollowing => {
                     if( !isFollowing )
                     {
-                        client.send(JSON.stringify({
-                            type: MutexoServerEvent.Error,
-                            data: {
-                                msg: "address not followed",
-                                addr
-                            }
-                        }));
+                        client.send( addrNotFollowedMsg );
                         return;
                     }
                     switch( event )
@@ -712,13 +699,7 @@ async function handleClientMessage( this: WebSocket, rawData: RawData ): Promise
                             subClientToOutput( addr, client );
                         break;
                         default:
-                            client.send(JSON.stringify({
-                                type: MutexoServerEvent.Error,
-                                data: {
-                                    msg: "unknown event to subscribe to (by address)",
-                                    evt: sub
-                                }
-                            }));
+                            client.send( unknownSubEvtByAddrMsg );
                         break;
                     }
                 });
@@ -730,13 +711,7 @@ async function handleClientMessage( this: WebSocket, rawData: RawData ): Promise
                     const addr = await redis.hGet( `${UTXO_PREFIX}:${ref}`, "addr" ) as AddressStr | undefined;
                     if( !addr || !await isFollowingAddr( addr ) )
                     {
-                        client.send(JSON.stringify({
-                            type: MutexoServerEvent.Error,
-                            data: {
-                                msg: "could not find utxo",
-                                ref
-                            }
-                        }));
+                        client.send( utxoNotFoundMsg );
                         return;
                     }
                     switch( event )
@@ -752,13 +727,7 @@ async function handleClientMessage( this: WebSocket, rawData: RawData ): Promise
                         break;
                         case MutexoServerEvent.Output:
                         default:
-                            client.send(JSON.stringify({
-                                type: MutexoServerEvent.Error,
-                                data: {
-                                    msg: "unknown event to subscribe to (by ref)",
-                                    evt: sub
-                                }
-                            }));
+                            client.send( unknownSubEvtByUTxORefMsg );
                         break;
                     }
                 });
@@ -791,13 +760,7 @@ async function handleClientMessage( this: WebSocket, rawData: RawData ): Promise
                             unsubClientToOutput( addr, client );
                         break;
                         default:
-                            client.send(JSON.stringify({
-                                type: MutexoServerEvent.Error,
-                                data: {
-                                    msg: "unknown event to unsubscribe to (by address)",
-                                    evt: unsub
-                                }
-                            }));
+                            client.send( unknownUnsubEvtByAddrMsg );
                         break;
                     }
                 }
@@ -817,13 +780,7 @@ async function handleClientMessage( this: WebSocket, rawData: RawData ): Promise
         
                         case MutexoServerEvent.Output:
                         default:
-                            client.send(JSON.stringify({
-                                type: MutexoServerEvent.Error,
-                                data: {
-                                    msg: "unknown event to unsubscribe to (by ref)",
-                                    evt: unsub
-                                }
-                            }));
+                            client.send( unknownUnsubEvtByUTxORefMsg );
                         break;
                     }
                 }
@@ -850,13 +807,7 @@ async function handleClientMessage( this: WebSocket, rawData: RawData ): Promise
                     unsubAllOutput( client );
                 break;
                 default:
-                    client.send(JSON.stringify({
-                        type: MutexoServerEvent.Error,
-                        data: {
-                            msg: "unknown event to unsubscribe to (no filters)",
-                            evt: unsub
-                        }
-                    }));
+                    client.send( unknownUnsubEvtMsg );
                 break;
             }
         }
@@ -872,27 +823,26 @@ async function handleClientMessage( this: WebSocket, rawData: RawData ): Promise
         const freed = free.free.filter( ref => unlockUTxO( client, ref ) );
         if( freed.length === 0 )
         {
-            client.send(
-                JSON.stringify({
-                    type: MutexoServerEvent.Failure,
-                    data: {
-                        msg: "invalid free call; no utxos freed",
-                        ref: free.free
-                    }
-                })
-            );
+            const msg = ( new MessageFailure({
+                failureData: {
+                    failureType: 0,
+                    payload: free.free.map( ( ref ) => ( forceTxOutRef( ref ) ) )
+                }
+            }) ).toCborBytes();
+            
+            client.send( msg );
         }
         else
         {
-            client.send(
-                JSON.stringify({
-                    type: MutexoServerEvent.Success,
-                    data: {
-                        op: MutexoServerEvent.Free,
-                        refs: freed
-                    }
-                })
-            );
+            const msg = ( new MessageSuccess({
+                successData: {
+                    successType: 0,
+                    payload: freed.map( ( ref ) => ( forceTxOutRef( ref ) ) )
+                }
+            }) ).toCborBytes();
+            
+            client.send( msg );
+            
             emitUtxoFreeEvts( freed );
         }
     }
@@ -902,29 +852,29 @@ async function handleClientMessage( this: WebSocket, rawData: RawData ): Promise
         const lockable = lock.lock.filter( ref => canClientLockUTxO( ref ) );
         if( lockable.length < lock.required )
         {
-            client.send(
-                JSON.stringify({
-                    type: MutexoServerEvent.Failure,
-                    data: {
-                        msg: "invalid lock call; not enough utxos",
-                        aviable: lockable
-                    }
-                })
-            );
+            const msg = ( new MessageFailure({
+                failureData: {
+                    failureType: 1,
+                    payload: lockable.map( ( ref ) => ( forceTxOutRef( ref ) ) )
+                }
+            }) ).toCborBytes();
+
+            client.send( msg );
         }
         else
         {
             lockable.length = lock.required; // drop any extra
             lockable.forEach( ref => void lockUTxO( client, ref ) );
-            client.send(
-                JSON.stringify({
-                    type: MutexoServerEvent.Success,
-                    data: {
-                        op: MutexoServerEvent.Lock,
-                        refs: lockable
-                    }
-                })
-            );
+
+            const msg = ( new MessageSuccess({
+                successData: {
+                    successType: 0,
+                    payload: lockable.map( ( ref ) => ( forceTxOutRef( ref ) ) )
+                }
+            }) ).toCborBytes();
+
+            client.send( msg );
+
             emitUtxoLockEvts( lockable );
         }
     }
@@ -943,10 +893,10 @@ async function emitUtxoLockEvts( refs: TxOutRefStr[] ): Promise<void>
 
     for( const data of datas )
     {
-        const msg = JSON.stringify({
-            type: MutexoServerEvent.Lock,
-            data
-        });
+        const msg = ( new MessageLock({
+            utxoRef: forceTxOutRef( data.ref ),
+            addr: Address.fromString( data.addr )
+        }) ).toCborBytes();
 
         lockedUTxOClients
         .get( data.ref )
@@ -975,10 +925,10 @@ async function emitUtxoFreeEvts( refs: TxOutRefStr[] ): Promise<void>
 
     for( const data of datas )
     {
-        const msg = JSON.stringify({
-            type: MutexoServerEvent.Free,
-            data
-        });
+        const msg = ( new MessageFree({
+            utxoRef: forceTxOutRef( data.ref ),
+            addr: Address.fromString( data.addr )
+        }) ).toCborBytes();
 
         freeUTxOClients
         .get( data.ref )

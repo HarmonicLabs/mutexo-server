@@ -837,7 +837,7 @@ async function handleClientMessage( this: WebSocket, rawData: RawData ): Promise
             const msg = ( new MessageSuccess({
                 successData: {
                     successType: 0,
-                    payload: freed.map( ( ref ) => ( forceTxOutRef( ref ) ) )
+                    utxoRefs: freed.map( ( ref ) => ( forceTxOutRef( ref ) ) )
                 }
             }) ).toCborBytes();
             
@@ -869,7 +869,7 @@ async function handleClientMessage( this: WebSocket, rawData: RawData ): Promise
             const msg = ( new MessageSuccess({
                 successData: {
                     successType: 0,
-                    payload: lockable.map( ( ref ) => ( forceTxOutRef( ref ) ) )
+                    utxoRefs: lockable.map( ( ref ) => ( forceTxOutRef( ref ) ) )
                 }
             }) ).toCborBytes();
 

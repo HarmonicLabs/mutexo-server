@@ -25,19 +25,19 @@ import { URL } from "node:url";
 import express from "express";
 
 // close message
-const closeMsg = ( new MessageClose() ).toCborBytes();
+const closeMsg = new MessageClose().toCborBytes();
 // error messages
-const missingIpMsg = ( new MessageError({ errorType: 1 }) ).toCborBytes();
-const missingAuthTokenMsg = ( new MessageError({ errorType: 2 }) ).toCborBytes();       // to do: create a new "missing auth token" error type
-const invalidAuthTokenMsg = ( new MessageError({ errorType: 2 }) ).toCborBytes();
-const tooManyReqsMsg = ( new MessageError({ errorType: 3 }) ).toCborBytes();
-const addrNotFollowedMsg = ( new MessageError({ errorType: 4 }) ).toCborBytes();
-const utxoNotFoundMsg = ( new MessageError({ errorType: 5 }) ).toCborBytes();
-const unknownSubEvtByAddrMsg = ( new MessageError({ errorType: 6 }) ).toCborBytes();
-const unknownSubEvtByUTxORefMsg = ( new MessageError({ errorType: 7 }) ).toCborBytes();
-const unknownUnsubEvtByAddrMsg = ( new MessageError({ errorType: 8 }) ).toCborBytes();
-const unknownUnsubEvtByUTxORefMsg = ( new MessageError({ errorType: 9 }) ).toCborBytes();
-const unknownUnsubEvtMsg = ( new MessageError({ errorType: 10 }) ).toCborBytes();       // to do: create a new "unknown event to unsubscribe to (no filters)" error type (???)
+const missingIpMsg = new MessageError({ errorType: 1 }).toCborBytes();
+const missingAuthTokenMsg = new MessageError({ errorType: 2 }).toCborBytes();       // to do: create a new "missing auth token" error type
+const invalidAuthTokenMsg = new MessageError({ errorType: 2 }).toCborBytes();
+const tooManyReqsMsg = new MessageError({ errorType: 3 }).toCborBytes();
+const addrNotFollowedMsg = new MessageError({ errorType: 4 }).toCborBytes();
+const utxoNotFoundMsg = new MessageError({ errorType: 5 }).toCborBytes();
+const unknownSubEvtByAddrMsg = new MessageError({ errorType: 6 }).toCborBytes();
+const unknownSubEvtByUTxORefMsg = new MessageError({ errorType: 7 }).toCborBytes();
+const unknownUnsubEvtByAddrMsg = new MessageError({ errorType: 8 }).toCborBytes();
+const unknownUnsubEvtByUTxORefMsg = new MessageError({ errorType: 9 }).toCborBytes();
+const unknownUnsubEvtMsg = new MessageError({ errorType: 10 }).toCborBytes();       // to do: create a new "unknown event to unsubscribe to (no filters)" error type (???)
 
 
 const app = express();
@@ -172,11 +172,11 @@ parentPort?.on("message", async msg => {
                         const addr = await redis.hGet( `${UTXO_PREFIX}:${inp}`, "addr" ) as AddressStr | undefined;
                         if( !addr ) return;
 
-                        const msg = ( new MessageInput({
+                        const msg = new MessageInput({
                             utxoRef: forceTxOutRef( inp ),
                             addr: Address.fromString( addr ),
                             txHash: stringToUint8Array( txHash )
-                        }) ).toCborBytes();
+                        }).toCborBytes();
 
                         spentUTxOClients.get( inp )?.forEach( client => client.send( msg ));
                         spentAddrClients.get( addr )?.forEach( client => client.send( msg ));
@@ -187,10 +187,10 @@ parentPort?.on("message", async msg => {
                         const addr = await redis.hGet( `${UTXO_PREFIX}:${out}`, "addr" ) as AddressStr | undefined;
                         if( !addr ) return;
 
-                        const msg = ( new MessageOutput({
+                        const msg = new MessageOutput({
                             utxoRef: forceTxOutRef( out ),
                             addr: Address.fromString( addr )
-                        }) ).toCborBytes();
+                        }).toCborBytes();
 
                         outputClients.get( addr )?.forEach( client => client.send( msg ));
                     })
@@ -823,23 +823,23 @@ async function handleClientMessage( this: WebSocket, rawData: RawData ): Promise
         const freed = free.free.filter( ref => unlockUTxO( client, ref ) );
         if( freed.length === 0 )
         {
-            const msg = ( new MessageFailure({
+            const msg = new MessageFailure({
                 failureData: {
                     failureType: 0,
-                    payload: free.free.map( ( ref ) => ( forceTxOutRef( ref ) ) )
+                    utxoRefs: free.free.map( ( ref ) => ( forceTxOutRef( ref ) ) )
                 }
-            }) ).toCborBytes();
+            }).toCborBytes();
             
             client.send( msg );
         }
         else
         {
-            const msg = ( new MessageSuccess({
+            const msg = new MessageSuccess({
                 successData: {
                     successType: 0,
                     utxoRefs: freed.map( ( ref ) => ( forceTxOutRef( ref ) ) )
                 }
-            }) ).toCborBytes();
+            }).toCborBytes();
             
             client.send( msg );
             
@@ -852,12 +852,12 @@ async function handleClientMessage( this: WebSocket, rawData: RawData ): Promise
         const lockable = lock.lock.filter( ref => canClientLockUTxO( ref ) );
         if( lockable.length < lock.required )
         {
-            const msg = ( new MessageFailure({
+            const msg = new MessageFailure({
                 failureData: {
                     failureType: 1,
-                    payload: lockable.map( ( ref ) => ( forceTxOutRef( ref ) ) )
+                    utxoRefs: lockable.map( ( ref ) => ( forceTxOutRef( ref ) ) )
                 }
-            }) ).toCborBytes();
+            }).toCborBytes();
 
             client.send( msg );
         }
@@ -866,12 +866,12 @@ async function handleClientMessage( this: WebSocket, rawData: RawData ): Promise
             lockable.length = lock.required; // drop any extra
             lockable.forEach( ref => void lockUTxO( client, ref ) );
 
-            const msg = ( new MessageSuccess({
+            const msg = new MessageSuccess({
                 successData: {
                     successType: 0,
                     utxoRefs: lockable.map( ( ref ) => ( forceTxOutRef( ref ) ) )
                 }
-            }) ).toCborBytes();
+            }).toCborBytes();
 
             client.send( msg );
 
@@ -893,10 +893,10 @@ async function emitUtxoLockEvts( refs: TxOutRefStr[] ): Promise<void>
 
     for( const data of datas )
     {
-        const msg = ( new MessageLock({
+        const msg = new MessageLock({
             utxoRef: forceTxOutRef( data.ref ),
             addr: Address.fromString( data.addr )
-        }) ).toCborBytes();
+        }).toCborBytes();
 
         lockedUTxOClients
         .get( data.ref )
@@ -925,10 +925,10 @@ async function emitUtxoFreeEvts( refs: TxOutRefStr[] ): Promise<void>
 
     for( const data of datas )
     {
-        const msg = ( new MessageFree({
+        const msg = new MessageFree({
             utxoRef: forceTxOutRef( data.ref ),
             addr: Address.fromString( data.addr )
-        }) ).toCborBytes();
+        }).toCborBytes();
 
         freeUTxOClients
         .get( data.ref )

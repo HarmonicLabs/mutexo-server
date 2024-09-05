@@ -1,8 +1,9 @@
 import { getClientUtxoSpentSubs, getClientAddrSpentSubs, getClientOutputsSubs, setWsClientIp, getWsClientIp, getClientUtxoFreeSubs, getClientUtxoLockSubs, getClientAddrFreeSubs, getClientAddrLockSubs } from "../wsServer/clientProps";
-import { AddrFilter, ClientReq, ClientReqFree, ClientReqLock, ClientSub, ClientUnsub, MessageClose, MessageError, MessageFailure, MessageFree, MessageInput, MessageLock, MessageOutput, MessageSuccess, parseClientReq, UtxoFilter } from "@harmoniclabs/mutexo-messages";
+import { AddrFilter, ClientReq, ClientReqFree, ClientReqLock, ClientSub, ClientUnsub, MessageClose, MessageError, MessageFailure, MessageFree, MessageInput, MessageLock, MessageOutput, MessageSuccess, UtxoFilter } from "@harmoniclabs/mutexo-messages";
 import { LEAKING_BUCKET_BY_IP_PREFIX, LEAKING_BUCKET_MAX_CAPACITY, LEAKING_BUCKET_TIME, TEMP_AUTH_TOKEN_PREFIX, UTXO_PREFIX, UTXO_VALUE_PREFIX } from "../constants";
 import { Address, AddressStr, forceTxOutRef, forceTxOutRefStr, TxOutRefStr } from "@harmoniclabs/cardano-ledger-ts";
 import { addressIsFollowed, followAddr, isFollowingAddr } from "../redis/isFollowingAddr";
+import { parseClientReq } from "@harmoniclabs/mutexo-messages/dist/utils/parsers";
 import { SavedFullTxOut, tryParseSavedTxOut } from "../funcs/saveUtxos";
 import { eventIndexToMutexoEventName } from "../utils/mutexEvents";
 import { getClientIp as getClientIpFromReq } from "request-ip";

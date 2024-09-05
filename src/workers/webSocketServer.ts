@@ -1,23 +1,24 @@
 import { getClientUtxoSpentSubs, getClientAddrSpentSubs, getClientOutputsSubs, setWsClientIp, getWsClientIp, getClientUtxoFreeSubs, getClientUtxoLockSubs, getClientAddrFreeSubs, getClientAddrLockSubs } from "../wsServer/clientProps";
+import { AddrFilter, ClientReq, ClientReqFree, ClientReqLock, ClientSub, ClientUnsub, MessageClose, MessageError, MessageFailure, MessageFree, MessageInput, MessageLock, MessageOutput, MessageSuccess, parseClientReq, UtxoFilter } from "@harmoniclabs/mutexo-messages";
 import { LEAKING_BUCKET_BY_IP_PREFIX, LEAKING_BUCKET_MAX_CAPACITY, LEAKING_BUCKET_TIME, TEMP_AUTH_TOKEN_PREFIX, UTXO_PREFIX, UTXO_VALUE_PREFIX } from "../constants";
-import { MessageClose, MessageError, MessageFailure, MessageFree, MessageInput, MessageLock, MessageOutput, MessageSuccess } from "@harmoniclabs/mutexo-messages";
-import { MutexoServerEvent, tryGetResolvedFreeMsg, tryGetResolvedLockMsg, tryGetSubMsg, tryGetUnsubMsg } from "../wsServer/events";
-import { Address, AddressStr, forceTxOutRef, TxOutRefStr } from "@harmoniclabs/cardano-ledger-ts";
+import { Address, AddressStr, forceTxOutRef, forceTxOutRefStr, TxOutRefStr } from "@harmoniclabs/cardano-ledger-ts";
 import { addressIsFollowed, followAddr, isFollowingAddr } from "../redis/isFollowingAddr";
 import { SavedFullTxOut, tryParseSavedTxOut } from "../funcs/saveUtxos";
+import { eventIndexToMutexoEventName } from "../utils/mutexEvents";
 import { getClientIp as getClientIpFromReq } from "request-ip";
 import { getRedisClient } from "../redis/getRedisClient";
-import { RawData, WebSocket, WebSocketServer } from "ws";
 import { isTxOutRefStr } from "../utils/isTxOutRefStr";
 import { filterInplace } from "../utils/filterInplace";
 import { tryGetBlockInfos } from "../types/BlockInfos";
 import { toHex } from "@harmoniclabs/uint8array-utils";
+import { MutexoServerEvent } from "../wsServer/events";
 import { ValueJson } from "../types/UTxOWithStatus";
 import { isObject } from "@harmoniclabs/obj-utils";
 import { parentPort } from "node:worker_threads";
+import { reqToName } from "../utils/clientReqs";
 import { ipRateLimit } from "../middlewares/ip";
+import { WebSocket, WebSocketServer } from "ws";
 import { isAddrStr } from "../utils/isAddrStr";
-import { unrawData } from "../utils/unrawData";
 import { sign, verify } from "jsonwebtoken";
 import { createServer } from "node:http";
 import { webcrypto } from "node:crypto";
@@ -28,17 +29,17 @@ import express from "express";
 const closeMsg = new MessageClose().toCborBytes();
 // error messages
 const missingIpMsg = new MessageError({ errorType: 1 }).toCborBytes();
-const missingAuthTokenMsg = new MessageError({ errorType: 2 }).toCborBytes();       // to do: create a new "missing auth token" error type
+const missingAuthTokenMsg = new MessageError({ errorType: 2 }).toCborBytes();           // TODO: create a new "missing auth token" error type
 const invalidAuthTokenMsg = new MessageError({ errorType: 2 }).toCborBytes();
 const tooManyReqsMsg = new MessageError({ errorType: 3 }).toCborBytes();
 const addrNotFollowedMsg = new MessageError({ errorType: 4 }).toCborBytes();
+const addrAlreadyFollowedMsg = new MessageError({ errorType: 4 }).toCborBytes();        // TODO: create a new "address already followed" error type
 const utxoNotFoundMsg = new MessageError({ errorType: 5 }).toCborBytes();
 const unknownSubEvtByAddrMsg = new MessageError({ errorType: 6 }).toCborBytes();
 const unknownSubEvtByUTxORefMsg = new MessageError({ errorType: 7 }).toCborBytes();
 const unknownUnsubEvtByAddrMsg = new MessageError({ errorType: 8 }).toCborBytes();
 const unknownUnsubEvtByUTxORefMsg = new MessageError({ errorType: 9 }).toCborBytes();
-const unknownUnsubEvtMsg = new MessageError({ errorType: 10 }).toCborBytes();       // to do: create a new "unknown event to unsubscribe to (no filters)" error type (???)
-
+const unknownUnsubEvtMsg = new MessageError({ errorType: 10 }).toCborBytes();           // TODO: create a new "unknown event to unsubscribe to (no filters)" error type (???)
 
 const app = express();
 const http_server = createServer( app );
@@ -469,7 +470,7 @@ function subClientToOutput( addr: AddressStr, client: WebSocket ): void
     getClientOutputsSubs( client ).add( addr );
 }
 
-function unsubClientToOutput( addr: AddressStr, client: WebSocket ): void
+function unsubClientFromOutput( addr: AddressStr, client: WebSocket ): void
 {
     outputClients.get( addr )?.delete( client );
     getClientOutputsSubs( client ).delete( addr );
@@ -577,7 +578,7 @@ function unsubAllSpentAddr( client: WebSocket )
 function unsubAllOutput( client: WebSocket )
 {
     const OUTPUT_SUBS = getClientOutputsSubs( client );
-    for( const addr of OUTPUT_SUBS ) unsubClientToOutput( addr, client );
+    for( const addr of OUTPUT_SUBS ) unsubClientFromOutput( addr, client );
 }
 
 function unsubAllFreeUTxO( client: WebSocket )
@@ -622,14 +623,14 @@ function terminateClient( client: WebSocket )
 }
 
 /**
- * - sub + filters
+ * - sub
  * - unsub
  * - lock
  * - free
  */
-async function handleClientMessage( this: WebSocket, rawData: RawData ): Promise<void>
+async function handleClientMessage( wsClient: WebSocket, bytes: Uint8Array ): Promise<MessageSuccess | MessageFailure | void>
 {
-    const client = this;
+    const client = wsClient;
     // heartbeat
     (client as any).isAlive = true;
 
@@ -637,246 +638,260 @@ async function handleClientMessage( this: WebSocket, rawData: RawData ): Promise
     if( reqsInLastMinute > LEAKING_BUCKET_MAX_CAPACITY )
     {
         client.send( tooManyReqsMsg );
-        return;
     }
-
-    const data = unrawData( rawData );
 
     // NO big messages
-    if( data.length > 2048 ) return;
+    if( bytes.length > 2048 ) return;
 
-    let json: any;
-    
-    try {
-        json = JSON.parse( data.toString("utf-8") );
-    } catch {
-        return;
+    const req: ClientReq = parseClientReq( bytes );
+    const reqType = reqToName( req );
+
+    // unknown request
+    if( !reqType ) return;
+
+    switch( reqType )
+    {
+        case "sub":
+            if( req instanceof ClientSub ) return handleClientSub( client, req );
+            break;
+        case "unsub":
+            if( req instanceof ClientUnsub ) return handleClientUnsub( client, req );
+            break;
+        case "free":
+            if( req instanceof ClientReqFree ) return handleClientReqFree( client, req );
+            break;
+        case "lock":
+            if( req instanceof ClientReqLock ) return handleClientReqLock( client, req );
+            break;
     }
 
-    if(!(
-        typeof json === "object" &&
-        json !== null &&
-        !Array.isArray( json )
-    )) return;
+    return;
 
-    const sub = tryGetSubMsg( json );
-    const unsub = tryGetUnsubMsg( json );
+    // unsub all (???)
+    // else
+    // {
+    //     switch( event )
+    //     {
+    //         case MutexoServerEvent.Lock:
+    //             unsubAllLockedUTxO( client );
+    //             unsubAllLockedAddr( client );
+    //             break;
+    //         case MutexoServerEvent.Free:
+    //             unsubAllFreeUTxO( client );
+    //             unsubAllFreeAddr( client );
+    //         break;
+    //         case MutexoServerEvent.Input:
+    //             unsubAllSpentUTxO( client );
+    //             unsubAllSpentAddr( client );
+    //         break;
 
-    /*
-    const addrIsStr = typeof json.addr === "string";
-    const refIsStr  = typeof json.ref  === "string";
-    const addr = addrIsStr ? json.addr : undefined;
-    const ref  = refIsStr  ? json.ref  : undefined;
-    */
+    //         case MutexoServerEvent.Output:
+    //             unsubAllOutput( client );
+    //         break;
+    //         default:
+    //             client.send( unknownUnsubEvtMsg );
+    //         break;
+    //     }
+    // }
+}
 
-    if( sub && !unsub )
-    {
-        const { sub: event, filters } = sub;
-        filters.forEach(({ addr, ref }) => {
-            const addrIsStr = typeof addr === "string";
-            const refIsStr  = typeof ref  === "string";
-            if( addrIsStr ) // if both addr and ref are present only add address
-            {
-                isFollowingAddr( addr )
-                .then( isFollowing => {
-                    if( !isFollowing )
-                    {
-                        client.send( addrNotFollowedMsg );
-                        return;
-                    }
-                    switch( event )
-                    {
-                        case MutexoServerEvent.Lock:
-                            subClientToLockedAddr( addr, client );
-                        break;
-                        case MutexoServerEvent.Free:
-                            subClientToFreeAddr( addr, client );
-                        break;
-                        case MutexoServerEvent.Input:
-                            subClientToSpentAddr( addr, client );
-                        break;
-                        case MutexoServerEvent.Output:
-                            subClientToOutput( addr, client );
-                        break;
-                        default:
-                            client.send( unknownSubEvtByAddrMsg );
-                        break;
-                    }
-                });
-            }
-            else if( refIsStr )
-            {
-                getRedisClient()
-                .then( async redis => {
-                    const addr = await redis.hGet( `${UTXO_PREFIX}:${ref}`, "addr" ) as AddressStr | undefined;
-                    if( !addr || !await isFollowingAddr( addr ) )
-                    {
-                        client.send( utxoNotFoundMsg );
-                        return;
-                    }
-                    switch( event )
-                    {
-                        case MutexoServerEvent.Lock:
-                            subClientToLockedUTxO( ref, client );
-                        break;
-                        case MutexoServerEvent.Free:
-                            subClientToFreeUTxO( ref, client );
-                        break;
-                        case MutexoServerEvent.Input:
-                            subClientToSpentUTxO( ref, client );
-                        break;
-                        case MutexoServerEvent.Output:
-                        default:
-                            client.send( unknownSubEvtByUTxORefMsg );
-                        break;
-                    }
-                });
-            }
-        });
-    }
+async function handleClientSub( client: WebSocket, req: ClientSub ): Promise<void>
+{
+    const { id, eventType, filters } = req;
 
-    if( unsub )
-    {
-        const { unsub: event, filters } = unsub
-        if( Array.isArray( filters ) )
-        {
-            filters.forEach(({ addr, ref }) => {
-                const addrIsStr = typeof addr === "string";
-                const refIsStr  = typeof ref  === "string";
-                if( addrIsStr )
-                {
-                    switch( event )
-                    {
-                        case MutexoServerEvent.Free:
-                            unsubClientFromLockedAddr( addr, client );
-                        break;
-                        case MutexoServerEvent.Lock:
-                            unsubClientFromFreeAddr( addr, client );
-                        break;
-                        case MutexoServerEvent.Input:
-                            unsubClientFromSpentAddr( addr, client );
-                        break;
-                        case MutexoServerEvent.Output:
-                            unsubClientToOutput( addr, client );
-                        break;
-                        default:
-                            client.send( unknownUnsubEvtByAddrMsg );
-                        break;
-                    }
-                }
-                else if( refIsStr )
-                {
-                    switch( event )
-                    {
-                        case MutexoServerEvent.Lock:
-                            unsubClientFromLockedUTxO( ref, client );
-                        break;
-                        case MutexoServerEvent.Free:
-                            unsubClientFromFreeUTxO( ref, client );
-                        break;
-                        case MutexoServerEvent.Input:
-                            unsubClientFromSpentUTxO( ref, client );
-                        break;
+    filters.forEach(( filter ) => {
+        const evtName = eventIndexToMutexoEventName( eventType );
         
-                        case MutexoServerEvent.Output:
-                        default:
-                            client.send( unknownUnsubEvtByUTxORefMsg );
-                        break;
-                    }
-                }
-            })
-        }
-        else // unsub all
+        if( filter instanceof AddrFilter )
         {
-            switch( event )
-            {
-                case MutexoServerEvent.Lock:
-                    unsubAllLockedUTxO( client );
-                    unsubAllLockedAddr( client );
+            const addrStr = filter.addr.toString();
+
+            isFollowingAddr( addrStr )
+            .then( async ( isFollowing ) => {
+                if( !isFollowing )
+                {
+                    client.send( addrNotFollowedMsg );
+                    return;
+                }
+
+                switch( evtName )
+                {
+                    case MutexoServerEvent.Lock:
+                        subClientToLockedAddr( addrStr, client );
                     break;
+                    case MutexoServerEvent.Free:
+                        subClientToFreeAddr( addrStr, client );
+                    break;
+                    case MutexoServerEvent.Input:
+                        subClientToSpentAddr( addrStr, client );
+                    break;
+                    case MutexoServerEvent.Output:
+                        subClientToOutput( addrStr, client );
+                    break;
+                    default:
+                        client.send( unknownSubEvtByAddrMsg );
+                    break;
+                }
+            } );
+        }
+        else if( filter instanceof UtxoFilter )
+        {
+            const ref = filter.utxoRef.toString();
+                            
+            getRedisClient()
+            .then( async ( redis ) => {                        
+                const addr = await redis.hGet( `${UTXO_PREFIX}:${ ref }`, "addr" ) as AddressStr | undefined;
+                if( !addr || !await isFollowingAddr( addr ) )
+                {
+                    client.send( utxoNotFoundMsg );
+                    return;
+                }
+                
+                switch( evtName )
+                {
+                    case MutexoServerEvent.Lock:
+                        subClientToLockedUTxO( ref, client );
+                    break;
+                    case MutexoServerEvent.Free:
+                        subClientToFreeUTxO( ref, client );
+                    break;
+                    case MutexoServerEvent.Input:
+                        subClientToSpentUTxO( ref, client );
+                    break;
+                    case MutexoServerEvent.Output:
+                    default:
+                        client.send( unknownSubEvtByUTxORefMsg );
+                    break;
+                }
+            } );
+        }
+    });
+}
+
+async function handleClientUnsub( client: WebSocket, req: ClientUnsub ): Promise<void>
+{
+    const { id, eventType, filters } = req;
+
+    filters.forEach(( filter ) => {
+        const evtName = eventIndexToMutexoEventName( eventType );
+        
+        if( filter instanceof AddrFilter )
+        {
+            const addrStr = filter.addr.toString();
+
+            switch( evtName )
+            {
                 case MutexoServerEvent.Free:
-                    unsubAllFreeUTxO( client );
-                    unsubAllFreeAddr( client );
+                    unsubClientFromLockedAddr( addrStr, client );
+                break;
+                case MutexoServerEvent.Lock:
+                    unsubClientFromFreeAddr( addrStr, client );
                 break;
                 case MutexoServerEvent.Input:
-                    unsubAllSpentUTxO( client );
-                    unsubAllSpentAddr( client );
+                    unsubClientFromSpentAddr( addrStr, client );
                 break;
-
                 case MutexoServerEvent.Output:
-                    unsubAllOutput( client );
+                    unsubClientFromOutput( addrStr, client );
                 break;
                 default:
-                    client.send( unknownUnsubEvtMsg );
+                    client.send( unknownUnsubEvtByAddrMsg );
                 break;
             }
         }
-        
-    }
+        else if( filter instanceof UtxoFilter )
+        {
+            const ref = filter.utxoRef.toString();
 
-    // mutex messages
-    const lock = tryGetResolvedLockMsg( json );
-    const free = tryGetResolvedFreeMsg( json );
-    
-    if( free )
+            switch( evtName )
+            {
+                case MutexoServerEvent.Lock:
+                    unsubClientFromLockedUTxO( ref, client );
+                break;
+                case MutexoServerEvent.Free:
+                    unsubClientFromFreeUTxO( ref, client );
+                break;
+                case MutexoServerEvent.Input:
+                    unsubClientFromSpentUTxO( ref, client );
+                break;
+                case MutexoServerEvent.Output:
+                    // ?????
+                    break;
+                default:
+                    client.send( unknownUnsubEvtByUTxORefMsg );
+                break;
+            }
+        }
+    });
+}
+
+async function handleClientReqFree( client: WebSocket, req: ClientReqFree ): Promise<MessageSuccess | MessageFailure>
+{
+    const { id, utxoRefs } = req;
+
+    const freed = utxoRefs.map( forceTxOutRefStr ).filter(( utxoRef ) => ( unlockUTxO( client, utxoRef )));
+
+    if( freed.length === 0 )
     {
-        const freed = free.free.filter( ref => unlockUTxO( client, ref ) );
-        if( freed.length === 0 )
-        {
-            const msg = new MessageFailure({
-                failureData: {
-                    failureType: 0,
-                    utxoRefs: free.free.map( ( ref ) => ( forceTxOutRef( ref ) ) )
-                }
-            }).toCborBytes();
-            
-            client.send( msg );
-        }
-        else
-        {
-            const msg = new MessageSuccess({
-                successData: {
-                    successType: 0,
-                    utxoRefs: freed.map( ( ref ) => ( forceTxOutRef( ref ) ) )
-                }
-            }).toCborBytes();
-            
-            client.send( msg );
-            
-            emitUtxoFreeEvts( freed );
-        }
+        const msg = new MessageFailure({
+            id,
+            failureData: {
+                failureType: 0,
+                utxoRefs: freed.map( ( ref ) => ( forceTxOutRef( ref ) ))
+            }
+        }).toCborBytes();
+        
+        client.send( msg );
     }
-    // check locks only if no "free" is specified
-    else if( lock )
+    else
     {
-        const lockable = lock.lock.filter( ref => canClientLockUTxO( ref ) );
-        if( lockable.length < lock.required )
-        {
-            const msg = new MessageFailure({
+        const msg = new MessageSuccess({
+            id,
+            successData: {
+                successType: 0,
+                utxoRefs: freed.map(( ref ) => ( forceTxOutRef( ref ) ))
+            }
+        }).toCborBytes();
+        
+        client.send( msg );
+        
+        emitUtxoFreeEvts( freed );
+    }
+}
+
+async function handleClientReqLock( client: WebSocket, req: ClientReqLock ): Promise<MessageSuccess | MessageFailure>
+{
+    const { id, utxoRefs, required } = req;
+
+    const lockable = utxoRefs.map( forceTxOutRefStr ).filter(( utxoRef ) => ( unlockUTxO( client, utxoRef ) ));
+
+    if( lockable.length < required )
+    {
+        const msg = new MessageFailure({
+                id,
                 failureData: {
                     failureType: 1,
-                    utxoRefs: lockable.map( ( ref ) => ( forceTxOutRef( ref ) ) )
+                    utxoRefs: lockable.map(( ref ) => ( forceTxOutRef( ref ) ))
                 }
-            }).toCborBytes();
+        }).toCborBytes();
 
-            client.send( msg );
-        }
-        else
-        {
-            lockable.length = lock.required; // drop any extra
-            lockable.forEach( ref => void lockUTxO( client, ref ) );
+        client.send( msg );
+    }
+    else
+    {
+        lockable.length = required; // drop any extra
+        lockable.forEach(( ref ) => ( void lockUTxO( client, ref ) ));
 
-            const msg = new MessageSuccess({
-                successData: {
-                    successType: 0,
-                    utxoRefs: lockable.map( ( ref ) => ( forceTxOutRef( ref ) ) )
-                }
-            }).toCborBytes();
+        const msg = new MessageSuccess({
+            id,
+            successData: {
+                successType: 0,
+                utxoRefs: lockable.map( ( ref ) => ( forceTxOutRef( ref ) ))
+            }
+        }).toCborBytes();
 
-            client.send( msg );
+        client.send( msg );
 
-            emitUtxoLockEvts( lockable );
-        }
+        emitUtxoLockEvts( lockable );
     }
 }
 

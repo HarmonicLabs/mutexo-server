@@ -10,7 +10,7 @@
     "dependencies": {
         "@harmoniclabs/cardano-ledger-ts": "^0.1.2",
         "@harmoniclabs/cbor": "^1.1.4",
-        "@harmoniclabs/mutexo-messages": "^0.0.2",
+        "@harmoniclabs/mutexo-messages": "^0.0.6",
         "@harmoniclabs/obj-utils": "^1.0.0",
         "@harmoniclabs/ouroboros-miniprotocols-ts": "^0.0.3",
         "@harmoniclabs/plutus-data": "^1.0.0",

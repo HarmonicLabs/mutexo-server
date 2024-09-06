@@ -18,13 +18,14 @@ import { isObject } from "@harmoniclabs/obj-utils";
 import { parentPort } from "node:worker_threads";
 import { reqToName } from "../utils/clientReqs";
 import { ipRateLimit } from "../middlewares/ip";
-import { WebSocket, WebSocketServer } from "ws";
+import { RawData, WebSocket, WebSocketServer } from "ws";
 import { isAddrStr } from "../utils/isAddrStr";
 import { sign, verify } from "jsonwebtoken";
 import { createServer } from "node:http";
 import { webcrypto } from "node:crypto";
 import { URL } from "node:url";
 import express from "express";
+import { unrawData } from "../utils/unrawData";
 
 // close message
 const closeMsg = new MessageClose().toCborBytes();
@@ -127,7 +128,7 @@ wsServer.on('connection', async ( client, req ) => {
     client.on( 'error', console.error );
     client.on( 'pong', heartbeat );
     client.on( 'ping', function handleClientPing( this: WebSocket ) { this.pong(); } );
-    client.on( "message", handleClientMessage )
+    client.on( "message", handleClientMessage.bind( client ) );
     // console.log( "connected to: ", req.socket.remoteAddress )
 });
 
@@ -629,11 +630,13 @@ function terminateClient( client: WebSocket )
  * - lock
  * - free
  */
-async function handleClientMessage( wsClient: WebSocket, bytes: Uint8Array ): Promise<MessageSuccess | MessageFailure | void>
+async function handleClientMessage( this: WebSocket, data: RawData, isBinary: boolean): Promise<MessageSuccess | MessageFailure | void>
 {
-    const client = wsClient;
+    const client = this;
     // heartbeat
     (client as any).isAlive = true;
+
+    const bytes = unrawData( data );
 
     const reqsInLastMinute = await leakingBucketOp( client );
     if( reqsInLastMinute > LEAKING_BUCKET_MAX_CAPACITY )
@@ -642,65 +645,24 @@ async function handleClientMessage( wsClient: WebSocket, bytes: Uint8Array ): Pr
     }
 
     // NO big messages
-    if( bytes.length > 2048 ) return;
+    if( bytes.length > 512 ) return;
 
     const req: ClientReq = parseClientReq( bytes );
-    const reqType = reqToName( req );
 
-    // unknown request
-    if( !reqType ) return;
-
-    switch( reqType )
-    {
-        case "sub":
-            if( req instanceof ClientSub ) return handleClientSub( client, req );
-            break;
-        case "unsub":
-            if( req instanceof ClientUnsub ) return handleClientUnsub( client, req );
-            break;
-        case "free":
-            if( req instanceof ClientReqFree ) return handleClientReqFree( client, req );
-            break;
-        case "lock":
-            if( req instanceof ClientReqLock ) return handleClientReqLock( client, req );
-            break;
-    }
+    if     ( req instanceof ClientSub )     return handleClientSub(     client, req );
+    else if( req instanceof ClientUnsub )   return handleClientUnsub(   client, req );
+    else if( req instanceof ClientReqFree ) return handleClientReqFree( client, req );
+    else if( req instanceof ClientReqLock ) return handleClientReqLock( client, req );
 
     return;
-
-    // unsub all (???)
-    // else
-    // {
-    //     switch( event )
-    //     {
-    //         case MutexoServerEvent.Lock:
-    //             unsubAllLockedUTxO( client );
-    //             unsubAllLockedAddr( client );
-    //             break;
-    //         case MutexoServerEvent.Free:
-    //             unsubAllFreeUTxO( client );
-    //             unsubAllFreeAddr( client );
-    //         break;
-    //         case MutexoServerEvent.Input:
-    //             unsubAllSpentUTxO( client );
-    //             unsubAllSpentAddr( client );
-    //         break;
-
-    //         case MutexoServerEvent.Output:
-    //             unsubAllOutput( client );
-    //         break;
-    //         default:
-    //             client.send( unknownUnsubEvtMsg );
-    //         break;
-    //     }
-    // }
 }
 
-async function handleClientSub( client: WebSocket, req: ClientSub ): Promise<void>
+function handleClientSub( client: WebSocket, req: ClientSub ): void
 {
     const { id, eventType, filters } = req;
 
-    filters.forEach(( filter ) => {
+    for( const filter of filters )
+    {
         const evtName = eventIndexToMutexoEventName( eventType );
         
         if( filter instanceof AddrFilter )
@@ -766,7 +728,7 @@ async function handleClientSub( client: WebSocket, req: ClientSub ): Promise<voi
                 }
             } );
         }
-    });
+    }
 }
 
 async function handleClientUnsub( client: WebSocket, req: ClientUnsub ): Promise<void>

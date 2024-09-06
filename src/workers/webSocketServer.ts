@@ -1,13 +1,16 @@
+import { AddrFilter, ClientReq, ClientReqFree, ClientReqLock, ClientSub, ClientUnsub, MessageClose, MessageError, MessageMutexFailure, MessageFree, MessageInput, MessageLock, MessageOutput, MessageMutexSuccess, UtxoFilter } from "@harmoniclabs/mutexo-messages";
 import { getClientUtxoSpentSubs, getClientAddrSpentSubs, getClientOutputsSubs, setWsClientIp, getWsClientIp, getClientUtxoFreeSubs, getClientUtxoLockSubs, getClientAddrFreeSubs, getClientAddrLockSubs } from "../wsServer/clientProps";
-import { AddrFilter, ClientReq, ClientReqFree, ClientReqLock, ClientSub, ClientUnsub, MessageClose, MessageError, MessageFailure, MessageFree, MessageInput, MessageLock, MessageOutput, MessageSuccess, UtxoFilter } from "@harmoniclabs/mutexo-messages";
 import { LEAKING_BUCKET_BY_IP_PREFIX, LEAKING_BUCKET_MAX_CAPACITY, LEAKING_BUCKET_TIME, TEMP_AUTH_TOKEN_PREFIX, UTXO_PREFIX, UTXO_VALUE_PREFIX } from "../constants";
 import { Address, AddressStr, forceTxOutRef, forceTxOutRefStr, TxOutRefStr } from "@harmoniclabs/cardano-ledger-ts";
+import { MessageSubFailure } from "@harmoniclabs/mutexo-messages/dist/messages/MessageSubFailure";
+import { MessageSubSuccess } from "@harmoniclabs/mutexo-messages/dist/messages/MessageSubSuccess";
 import { addressIsFollowed, followAddr, isFollowingAddr } from "../redis/isFollowingAddr";
 import { parseClientReq } from "@harmoniclabs/mutexo-messages/dist/utils/parsers";
 import { SavedFullTxOut, tryParseSavedTxOut } from "../funcs/saveUtxos";
 import { eventIndexToMutexoEventName } from "../utils/mutexEvents";
 import { getClientIp as getClientIpFromReq } from "request-ip";
 import { getRedisClient } from "../redis/getRedisClient";
+import { RawData, WebSocket, WebSocketServer } from "ws";
 import { isTxOutRefStr } from "../utils/isTxOutRefStr";
 import { filterInplace } from "../utils/filterInplace";
 import { tryGetBlockInfos } from "../types/BlockInfos";
@@ -16,16 +19,14 @@ import { MutexoServerEvent } from "../wsServer/events";
 import { ValueJson } from "../types/UTxOWithStatus";
 import { isObject } from "@harmoniclabs/obj-utils";
 import { parentPort } from "node:worker_threads";
-import { reqToName } from "../utils/clientReqs";
 import { ipRateLimit } from "../middlewares/ip";
-import { RawData, WebSocket, WebSocketServer } from "ws";
 import { isAddrStr } from "../utils/isAddrStr";
+import { unrawData } from "../utils/unrawData";
 import { sign, verify } from "jsonwebtoken";
 import { createServer } from "node:http";
 import { webcrypto } from "node:crypto";
 import { URL } from "node:url";
 import express from "express";
-import { unrawData } from "../utils/unrawData";
 
 // close message
 const closeMsg = new MessageClose().toCborBytes();
@@ -630,7 +631,7 @@ function terminateClient( client: WebSocket )
  * - lock
  * - free
  */
-async function handleClientMessage( this: WebSocket, data: RawData, isBinary: boolean): Promise<MessageSuccess | MessageFailure | void>
+async function handleClientMessage( this: WebSocket, data: RawData, isBinary: boolean): Promise<void>
 {
     const client = this;
     // heartbeat
@@ -649,15 +650,15 @@ async function handleClientMessage( this: WebSocket, data: RawData, isBinary: bo
 
     const req: ClientReq = parseClientReq( bytes );
 
-    if     ( req instanceof ClientSub )     return handleClientSub(     client, req );
-    else if( req instanceof ClientUnsub )   return handleClientUnsub(   client, req );
+    if     ( req instanceof ClientSub )     return handleClientSub    ( client, req );
+    else if( req instanceof ClientUnsub )   return handleClientUnsub  ( client, req );
     else if( req instanceof ClientReqFree ) return handleClientReqFree( client, req );
     else if( req instanceof ClientReqLock ) return handleClientReqLock( client, req );
 
     return;
 }
 
-function handleClientSub( client: WebSocket, req: ClientSub ): void
+async function handleClientSub( client: WebSocket, req: ClientSub ): Promise<void>
 {
     const { id, eventType, filters } = req;
 
@@ -673,7 +674,14 @@ function handleClientSub( client: WebSocket, req: ClientSub ): void
             .then( async ( isFollowing ) => {
                 if( !isFollowing )
                 {
-                    client.send( addrNotFollowedMsg );
+                    const msg = new MessageSubFailure({
+                        id,
+                        errorType: 4
+                    }).toCborBytes();
+
+                    client.send( msg );
+                    // client.send( addrNotFollowedMsg );
+
                     return;
                 }
 
@@ -692,8 +700,15 @@ function handleClientSub( client: WebSocket, req: ClientSub ): void
                         subClientToOutput( addrStr, client );
                     break;
                     default:
-                        client.send( unknownSubEvtByAddrMsg );
-                    break;
+                        const msg = new MessageSubFailure({
+                            id,
+                            errorType: 6
+                        }).toCborBytes();
+    
+                        client.send( msg );
+                        // client.send( unknownSubEvtByAddrMsg );
+
+                        return;
                 }
             } );
         }
@@ -706,7 +721,14 @@ function handleClientSub( client: WebSocket, req: ClientSub ): void
                 const addr = await redis.hGet( `${UTXO_PREFIX}:${ ref }`, "addr" ) as AddressStr | undefined;
                 if( !addr || !await isFollowingAddr( addr ) )
                 {
-                    client.send( utxoNotFoundMsg );
+                    const msg = new MessageSubFailure({
+                        id,
+                        errorType: 5
+                    }).toCborBytes();
+
+                    client.send( msg );
+                    // client.send( utxoNotFoundMsg );
+
                     return;
                 }
                 
@@ -723,11 +745,21 @@ function handleClientSub( client: WebSocket, req: ClientSub ): void
                     break;
                     case MutexoServerEvent.Output:
                     default:
-                        client.send( unknownSubEvtByUTxORefMsg );
-                    break;
+                        const msg = new MessageSubFailure({
+                            id,
+                            errorType: 7
+                        }).toCborBytes();
+    
+                        client.send( msg );
+                        // client.send( unknownSubEvtByUTxORefMsg );
+
+                        return;
                 }
             } );
         }
+
+        const msg = new MessageSubSuccess({ id }).toCborBytes();
+        client.send( msg );
     }
 }
 
@@ -787,7 +819,7 @@ async function handleClientUnsub( client: WebSocket, req: ClientUnsub ): Promise
     });
 }
 
-async function handleClientReqFree( client: WebSocket, req: ClientReqFree ): Promise<MessageSuccess | MessageFailure>
+async function handleClientReqFree( client: WebSocket, req: ClientReqFree ): Promise<void>
 {
     const { id, utxoRefs } = req;
 
@@ -795,7 +827,7 @@ async function handleClientReqFree( client: WebSocket, req: ClientReqFree ): Pro
 
     if( freed.length === 0 )
     {
-        const msg = new MessageFailure({
+        const msg = new MessageMutexFailure({
             id,
             failureData: {
                 failureType: 0,
@@ -807,7 +839,7 @@ async function handleClientReqFree( client: WebSocket, req: ClientReqFree ): Pro
     }
     else
     {
-        const msg = new MessageSuccess({
+        const msg = new MessageMutexSuccess({
             id,
             successData: {
                 successType: 0,
@@ -821,7 +853,7 @@ async function handleClientReqFree( client: WebSocket, req: ClientReqFree ): Pro
     }
 }
 
-async function handleClientReqLock( client: WebSocket, req: ClientReqLock ): Promise<MessageSuccess | MessageFailure>
+async function handleClientReqLock( client: WebSocket, req: ClientReqLock ): Promise<void>
 {
     const { id, utxoRefs, required } = req;
 
@@ -829,7 +861,7 @@ async function handleClientReqLock( client: WebSocket, req: ClientReqLock ): Pro
 
     if( lockable.length < required )
     {
-        const msg = new MessageFailure({
+        const msg = new MessageMutexFailure({
                 id,
                 failureData: {
                     failureType: 1,
@@ -844,7 +876,7 @@ async function handleClientReqLock( client: WebSocket, req: ClientReqLock ): Pro
         lockable.length = required; // drop any extra
         lockable.forEach(( ref ) => ( void lockUTxO( client, ref ) ));
 
-        const msg = new MessageSuccess({
+        const msg = new MessageMutexSuccess({
             id,
             successData: {
                 successType: 0,

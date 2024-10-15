@@ -16,6 +16,8 @@ const webSocketServer = new Worker(__dirname + "/workers/webSocketServer.js");
 const blockParser = new Worker(__dirname + "/workers/blockParser.js");
 
 process.on("beforeExit", () => {
+	console.log("!- THREADS MANAGER EXITING -!");
+
     webSocketServer.terminate();
     blockParser.terminate();
 });
@@ -23,6 +25,8 @@ process.on("beforeExit", () => {
 // block parser only notifies that it finished parsing a block
 // all new data is in redis
 blockParser.on("message", blockInfos => {
+	console.log("!- BLOCK PARSER THREAD RECEIVED A MESSAGE -!\n");
+
     webSocketServer.postMessage({
         type: "Block",
         data: blockInfos
@@ -40,7 +44,9 @@ void async function main()
     const lsqClient = new LocalStateQueryClient( mplexer );
 
     process.on("beforeExit", () => {
-        lsqClient.done();
+		console.log("!- WSS MAIN PROCESS IS ENDING -!\n");
+        
+		lsqClient.done();
         chainSyncClient.done();
         mplexer.close();
     });
@@ -48,6 +54,8 @@ void async function main()
     let tip = await syncAndAcquire( chainSyncClient, lsqClient );
 
     webSocketServer.on("message", async msg => {
+		console.log("!- WSS RECEIVED A MESSAGE -!\n");
+
         if( !isObject( msg ) ) return;
         if( msg.type === "queryAddrsUtxos" )
         {
@@ -69,6 +77,7 @@ void async function main()
     })
 
     chainSyncClient.on("rollForward", rollForward => {
+		console.log("!- WSS'CHAIN SYNC CLIENT IS ROLLING FORWARD -!\n");
 
         const blockData: Uint8Array = rollForward.cborBytes ?
             rollForwardBytesToBlockData( rollForward.cborBytes, rollForward.blockData ) : 
@@ -80,6 +89,8 @@ void async function main()
     });
 
     chainSyncClient.on("rollBackwards", rollBack => {
+		console.log("!- WSS'CHAIN SYNC CLIENT IS ROLLING BACKWARDS -!\n");
+	
         if( !rollBack.point.blockHeader ) return;
         
         tip = rollBack.tip.point;

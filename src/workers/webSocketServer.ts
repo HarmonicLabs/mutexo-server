@@ -44,6 +44,8 @@ const unknownUnsubEvtByAddrMsg = new MessageError({ errorType: 8 }).toCborBytes(
 const unknownUnsubEvtByUTxORefMsg = new MessageError({ errorType: 9 }).toCborBytes();
 const unknownUnsubEvtMsg = new MessageError({ errorType: 10 }).toCborBytes();           // TODO: create a new "unknown event to unsubscribe to (no filters)" error type (???)
 
+console.log("!- WSS CONNECTION OPENING -!\n");
+
 const app = express();
 const http_server = createServer( app );
 const wsServer = new WebSocketServer({ server: http_server, path: "/events", maxPayload: 512 });
@@ -51,7 +53,9 @@ const wsServer = new WebSocketServer({ server: http_server, path: "/events", max
 app.set("trust proxy", 1);
 
 app.get("/wsAuth", ipRateLimit, async ( req, res ) => {
-    const redis = await getRedisClient();
+	console.log("!- APP IS AUTHENTICATING -!\n");
+    
+	const redis = await getRedisClient();
     let secretBytes = new Uint8Array( 32 );
     let tokenStr: string;
     const ip = getClientIpFromReq( req );
@@ -83,7 +87,9 @@ async function leakingBucketOp( client: WebSocket ): Promise<number>
     return incr;
 }
 
-wsServer.on('connection', async ( client, req ) => {
+wsServer.on("connection", async ( client, req ) => {
+	console.log("!- WSS HOOKED A NEW CONNECTION -!\n");
+
     const ip = getClientIpFromReq( req );
     if( !ip )
     {
@@ -93,7 +99,7 @@ wsServer.on('connection', async ( client, req ) => {
     }
 
     const url = new URL( req.url ?? "", "ws://" + req.headers.host + "/");
-    const token = url.searchParams.get( "token" );
+    const token = url.searchParams.get("token");
 
     if( !token )
     {
@@ -126,11 +132,12 @@ wsServer.on('connection', async ( client, req ) => {
     setWsClientIp( client, ip );
     leakingBucketOp( client );
     (client as any).isAlive = true;
-    client.on( 'error', console.error );
-    client.on( 'pong', heartbeat );
-    client.on( 'ping', function handleClientPing( this: WebSocket ) { this.pong(); } );
+    client.on( "error", console.error );
+    client.on( "pong", heartbeat );
+    client.on( "ping", function handleClientPing( this: WebSocket ) { this.pong(); } );
     client.on( "message", handleClientMessage.bind( client ) );
-    console.log( "connected to: ", req.socket.remoteAddress )
+
+    console.log("> WSS CONNECTED TO: ", req.socket.remoteAddress, " <\n");
 });
 
 const pingInterval = setInterval(
@@ -151,7 +158,11 @@ const pingInterval = setInterval(
     30_000
 );
 
-wsServer.on('close', () => clearInterval( pingInterval ) );
+wsServer.on("close", () => {
+	console.log("!- WSS IS CLOSING A CONNECTION -!\n");
+
+	clearInterval( pingInterval ) 
+});
 
 function stringToUint8Array( str: string ): Uint8Array 
 {
@@ -159,6 +170,8 @@ function stringToUint8Array( str: string ): Uint8Array
 }
 
 parentPort?.on("message", async msg => {
+	console.log("!- PARENT PORT RECEIVED A NEW MESSAGE -!\n");
+
     if( !isObject( msg ) ) return;
     if( msg.type === "Block" )
     {
@@ -205,15 +218,21 @@ parentPort?.on("message", async msg => {
 });
 
 app.post("/addAddrs", async ( req, res ) => {
+	console.log("!- APP ADDING A NEW ADDRESSES -!\n");
     await addAddrs( req.body );
     res.status(200).send();
+	console.log("> ", req.body.length, " NEW ADDRESSES HAVE BEEN ADDED <\n");
 });
 
 app.get("/utxos", async ( req, res ) => {
+	console.log("!- APP IS QUERING THR REQUESTED UTXOS -!\n");
+
     res.status(200).send( await queryUtxos( req.body ) )
 });
 
-app.listen( 3001 );
+app.listen( 3001, () => {
+	console.log("!- APP IS LISTENING ON PORT 3001 -!\n") 
+});
 
 /**
  * it keeps track of the clients that are blocking a certain utxo
@@ -295,7 +314,7 @@ function subClientToFreeUTxO( ref: TxOutRefStr, client: WebSocket ): void
     const wsListInstance = freeUTxOClients.get( ref )!;
     if( !wsListInstance.has( client ) ) wsListInstance.add( client );
     
-    // it adds the utxo to the client's subscriptions
+    // it adds the utxo to the client"s subscriptions
     getClientUtxoFreeSubs( client ).add( ref );
 }
 
@@ -304,7 +323,7 @@ function subClientToFreeUTxO( ref: TxOutRefStr, client: WebSocket ): void
  */
 function unsubClientFromFreeUTxO( ref: TxOutRefStr, client: WebSocket ): void
 {
-    // it removes the utxo from the client's subscriptions
+    // it removes the utxo from the client"s subscriptions
     getClientUtxoFreeSubs( client ).delete( ref );
 
     const wsListInstance = freeUTxOClients.get( ref )!;
@@ -330,7 +349,7 @@ function subClientToLockedUTxO( ref: TxOutRefStr, client: WebSocket ): void
     const wsListInstance = lockedUTxOClients.get( ref )!;
     if( !wsListInstance.has( client ) ) wsListInstance.add( client );
     
-    // it adds the utxo to the client's subscriptions
+    // it adds the utxo to the client"s subscriptions
     getClientUtxoLockSubs( client ).add( ref );
 }
 
@@ -339,7 +358,7 @@ function subClientToLockedUTxO( ref: TxOutRefStr, client: WebSocket ): void
  */
 function unsubClientFromLockedUTxO( ref: TxOutRefStr, client: WebSocket ): void
 {
-    // it removes the utxo from the client's subscriptions
+    // it removes the utxo from the client"s subscriptions
     getClientUtxoLockSubs( client ).delete( ref );
 
     const wsListInstance = lockedUTxOClients.get( ref )!;
@@ -439,7 +458,7 @@ function unsubClientFromSpentUTxO( ref: TxOutRefStr, client: WebSocket ): void
 }
 
 /**
- * it maps which address'websocket spent a utxo
+ * it maps which address"websocket spent a utxo
  */
 const spentAddrClients: Map<AddressStr , Set<WebSocket>> = new Map();
 
@@ -483,6 +502,8 @@ function sendUtxoQueryRequest( addresses: AddressStr[] ): void
 {
     if( addresses.length > 0 )
     {
+		console.log("!- PARENT PORT IS POSTING NEW MESSAGE -!\n");
+
         parentPort?.postMessage({
             type: "queryAddrsUtxos",
             data: addresses
@@ -508,7 +529,7 @@ async function addAddrs( addresses: AddressStr[] ): Promise<void>
         
         if( await addressIsFollowed( addr ) )
         {
-            // don't query address we are already following
+            // don"t query address we are already following
             addresses.splice( i, 1 );
         }
         else

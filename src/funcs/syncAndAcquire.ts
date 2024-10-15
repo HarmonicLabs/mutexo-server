@@ -73,7 +73,7 @@ export async function syncAndAcquire(
                 versionTable: [
                     {
                         version: N2CHandshakeVersion.v14,
-                        data: { networkMagic: 1 }
+                        data: { networkMagic: 2 }
                     }
                 ]
             }).toCbor().toBuffer(),

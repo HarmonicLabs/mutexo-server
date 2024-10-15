@@ -130,7 +130,7 @@ wsServer.on('connection', async ( client, req ) => {
     client.on( 'pong', heartbeat );
     client.on( 'ping', function handleClientPing( this: WebSocket ) { this.pong(); } );
     client.on( "message", handleClientMessage.bind( client ) );
-    // console.log( "connected to: ", req.socket.remoteAddress )
+    console.log( "connected to: ", req.socket.remoteAddress )
 });
 
 const pingInterval = setInterval(
@@ -213,7 +213,7 @@ app.get("/utxos", async ( req, res ) => {
     res.status(200).send( await queryUtxos( req.body ) )
 });
 
-app.listen( 3000 );
+app.listen( 3001 );
 
 /**
  * it keeps track of the clients that are blocking a certain utxo

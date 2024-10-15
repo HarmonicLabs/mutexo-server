@@ -75,18 +75,21 @@ async function parseBlock( blockData: Uint8Array ): Promise<void>
 
         const tx = TxBody.fromCbor( body );
 
-        blockInfos.txs[ tx_i ].ins  = tx.inputs.map( i => {
-            const ref = i.utxoRef.toString();
-            redis.hSet( `${UTXO_PREFIX}:${ref}`, "spent", 1 ); 
-            return ref;
-        });
-        blockInfos.txs[ tx_i ].outs = tx.outputs.map(( out, idx ) => {
-            const ref = `${hashStr}#${idx}` as TxOutRefStr;
-
-            saveTxOut( out, ref );
-
-            return ref;
-        });
+        blockInfos.txs[ tx_i ] = {
+            hash: hashStr,
+            ins: tx.inputs.map( i => {
+                const ref = i.utxoRef.toString();
+                redis.hSet( `${UTXO_PREFIX}:${ref}`, "spent", 1 ); 
+                return ref;
+            }),
+            outs: tx.outputs.map(( out, idx ) => {
+                const ref = `${hashStr}#${idx}` as TxOutRefStr;
+    
+                saveTxOut( out, ref );
+    
+                return ref;
+            })
+        };
     }
 
     await redis.json.set(

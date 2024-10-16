@@ -230,7 +230,7 @@ app.get("/utxos", async ( req, res ) => {
     res.status(200).send( await queryUtxos( req.body ) )
 });
 
-app.listen( 3001, () => {
+http_server.listen(( 3001 ), () => {
 	console.log("!- APP IS LISTENING ON PORT 3001 -!\n") 
 });
 

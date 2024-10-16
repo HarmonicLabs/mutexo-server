@@ -33,6 +33,10 @@ blockParser.on("message", blockInfos => {
     });
 });
 
+blockParser.on("error", ( err ) => {
+	console.log("!- BLOCK PARSER THREAD ERRORED: -!\n", err, "\n");
+});
+
 void async function main()
 {
     const mplexer = new Multiplexer({

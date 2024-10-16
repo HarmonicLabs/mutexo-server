@@ -82,9 +82,14 @@ async function parseBlock( blockData: Uint8Array ): Promise<void>
         catch( e )
         {
             throw new Error(
-                "tx body hex: " + toHex( body ) 
-                + "\n" + String( e.message )
-                + "\n" + String( e.stack )
+                JSON.stringify({
+                    block: hashStr,
+                    tx_body: toHex( body ),
+                    tx_i,
+                    n_txs: txsBodies.length,
+                    error: e.message,
+                    stack: e.stack
+                }, undefined, 1)
             );
         }
 

@@ -11,6 +11,7 @@ import { saveUtxos } from "./funcs/saveUtxos";
 import { isAddrStr } from "./utils/isAddrStr";
 import { Worker } from "node:worker_threads";
 import { connect } from "net";
+import { appendFileSync, mkdirSync } from "node:fs";
 
 const webSocketServer = new Worker(__dirname + "/workers/webSocketServer.js");
 const blockParser = new Worker(__dirname + "/workers/blockParser.js");
@@ -35,6 +36,8 @@ blockParser.on("message", blockInfos => {
 
 blockParser.on("error", ( err ) => {
 	console.log("!- BLOCK PARSER THREAD ERRORED: -!\n", err, "\n");
+    mkdirSync("./logs", { recursive: true });
+    appendFileSync("./logs/blockParserErrors.log", `[${new Date().toString()}][BLOCK PARSER ERROR]: ` + err + "\n");
 });
 
 void async function main()

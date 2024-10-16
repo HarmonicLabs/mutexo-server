@@ -1,11 +1,12 @@
 import { BLOCKS_QUEQUE_KEY, BLOCK_PREFIX, MAX_N_VOLATILE_BLOCKS, TIP_HASH_KEY, UTXO_PREFIX, UTXO_VALUE_PREFIX } from "../constants";
 import { Cbor, LazyCborArray, CborArray, CborUInt } from "@harmoniclabs/cbor";
 import { BlockInfos, TxIO, tryGetBlockInfos } from "../types/BlockInfos";
-import { TxBody, TxOutRefStr } from "@harmoniclabs/cardano-ledger-ts";
+import { Tx, TxBody, TxOutRefStr } from "@harmoniclabs/cardano-ledger-ts";
 import { getRedisClient } from "../redis/getRedisClient";
 import { saveTxOut } from "../funcs/saveUtxos";
 import { parentPort } from "worker_threads";
 import { createHash } from "blake2";
+import { toHex } from "@harmoniclabs/uint8array-utils";
 
 function blake2b_256( data: Uint8Array ): string
 {
@@ -73,7 +74,15 @@ async function parseBlock( blockData: Uint8Array ): Promise<void>
         const hash = blake2b_256_bytes( body );
         const hashStr = hash.toString("hex");
 
-        const tx = TxBody.fromCbor( body );
+        let tx: TxBody;
+        
+        try {
+            tx = TxBody.fromCbor( body );
+        }
+        catch( e )
+        {
+            throw new Error("tx body hex: " + toHex( body ) + "\n" + String( e.message ) );
+        }
 
         blockInfos.txs[ tx_i ] = {
             hash: hashStr,

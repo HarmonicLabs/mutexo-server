@@ -29,21 +29,22 @@ import { URL } from "node:url";
 import express from "express";
 
 // close message
-const closeMsg = new MessageClose().toCborBytes();
+const closeMsg = new MessageClose().toCbor().toBuffer();
 // error messages
-const missingIpMsg = new MessageError({ errorType: 1 }).toCborBytes();
-const missingAuthTokenMsg = new MessageError({ errorType: 2 }).toCborBytes();           // TODO: create a new "missing auth token" error type
-const invalidAuthTokenMsg = new MessageError({ errorType: 2 }).toCborBytes();
-const tooManyReqsMsg = new MessageError({ errorType: 3 }).toCborBytes();
-const addrNotFollowedMsg = new MessageError({ errorType: 4 }).toCborBytes();
-const addrAlreadyFollowedMsg = new MessageError({ errorType: 4 }).toCborBytes();        // TODO: create a new "address already followed" error type
-const utxoNotFoundMsg = new MessageError({ errorType: 5 }).toCborBytes();
-const unknownSubEvtByAddrMsg = new MessageError({ errorType: 6 }).toCborBytes();
-const unknownSubEvtByUTxORefMsg = new MessageError({ errorType: 7 }).toCborBytes();
-const unknownUnsubEvtByAddrMsg = new MessageError({ errorType: 8 }).toCborBytes();
-const unknownUnsubEvtByUTxORefMsg = new MessageError({ errorType: 9 }).toCborBytes();
-const unknownUnsubEvtMsg = new MessageError({ errorType: 10 }).toCborBytes();           // TODO: create a new "unknown event to unsubscribe to (no filters)" error type (???)
+const missingIpMsg = new MessageError({ errorType: 1 }).toCbor().toBuffer();
+const missingAuthTokenMsg = new MessageError({ errorType: 2 }).toCbor().toBuffer();           //TODO: create a new "missing auth token" error type
+const invalidAuthTokenMsg = new MessageError({ errorType: 2 }).toCbor().toBuffer();
+const tooManyReqsMsg = new MessageError({ errorType: 3 }).toCbor().toBuffer();
+const addrNotFollowedMsg = new MessageError({ errorType: 4 }).toCbor().toBuffer();
+const addrAlreadyFollowedMsg = new MessageError({ errorType: 4 }).toCbor().toBuffer();        //TODO: create a new "address already followed" error type
+const utxoNotFoundMsg = new MessageError({ errorType: 5 }).toCbor().toBuffer();
+const unknownSubEvtByAddrMsg = new MessageError({ errorType: 6 }).toCbor().toBuffer();
+const unknownSubEvtByUTxORefMsg = new MessageError({ errorType: 7 }).toCbor().toBuffer();
+const unknownUnsubEvtByAddrMsg = new MessageError({ errorType: 8 }).toCbor().toBuffer();
+const unknownUnsubEvtByUTxORefMsg = new MessageError({ errorType: 9 }).toCbor().toBuffer();
+const unknownUnsubEvtMsg = new MessageError({ errorType: 10 }).toCbor().toBuffer();           //TODO: create a new "unknown event to unsubscribe to (no filters)" error type (???)
 
+//debug
 console.log("!- WSS CONNECTION OPENING -!\n");
 
 const app = express();
@@ -53,6 +54,7 @@ const wsServer = new WebSocketServer({ server: http_server, path: "/events", max
 app.set("trust proxy", 1);
 
 app.get("/wsAuth", ipRateLimit, async ( req, res ) => {
+	//debug
 	console.log("!- APP IS AUTHENTICATING -!\n");
     
 	const redis = await getRedisClient();
@@ -88,7 +90,10 @@ async function leakingBucketOp( client: WebSocket ): Promise<number>
 }
 
 wsServer.on("connection", async ( client, req ) => {
-	console.log("!- WSS HOOKED A NEW CONNECTION -!\n");
+	//debug	
+	var rndm = Math.floor( Math.random() * 1000 );
+	console.log("!- WSS HOOKED A NEW CONNECTION [", rndm, "] -!\n");
+    console.log("> [", rndm, "] WSS CONNECTING TO: ", req.socket.remoteAddress, " <\n");
 
     const ip = getClientIpFromReq( req );
     if( !ip )
@@ -132,12 +137,10 @@ wsServer.on("connection", async ( client, req ) => {
     setWsClientIp( client, ip );
     leakingBucketOp( client );
     (client as any).isAlive = true;
-    client.on( "error", console.error );
-    client.on( "pong", heartbeat );
-    client.on( "ping", function handleClientPing( this: WebSocket ) { this.pong(); } );
-    client.on( "message", handleClientMessage.bind( client ) );
-
-    console.log("> WSS CONNECTED TO: ", req.socket.remoteAddress, " <\n");
+    client.on("error", console.error);
+    client.on("pong", heartbeat);
+    client.on("ping", function handleClientPing( this: WebSocket ) { this.pong(); });
+    client.on("message", handleClientMessage.bind( client ));
 });
 
 const pingInterval = setInterval(
@@ -159,6 +162,7 @@ const pingInterval = setInterval(
 );
 
 wsServer.on("close", () => {
+	//debug
 	console.log("!- WSS IS CLOSING A CONNECTION -!\n");
 
 	clearInterval( pingInterval ) 
@@ -169,8 +173,9 @@ function stringToUint8Array( str: string ): Uint8Array
     return new TextEncoder().encode(str);
 }
 
-parentPort?.on("message", async msg => {
-	console.log("!- PARENT PORT RECEIVED A NEW MESSAGE -!\n");
+parentPort?.on("message", async ( msg ) => {
+	//debug
+	console.log("!- PARENT PORT RECEIVED A NEW MESSAGE: -!\n", msg, "\n");
 
     if( !isObject( msg ) ) return;
     if( msg.type === "Block" )
@@ -193,7 +198,7 @@ parentPort?.on("message", async msg => {
                             utxoRef: forceTxOutRef( inp ),
                             addr: Address.fromString( addr ),
                             txHash: stringToUint8Array( txHash )
-                        }).toCborBytes();
+                        }).toCbor().toBuffer();
 
                         spentUTxOClients.get( inp )?.forEach( client => client.send( msg ));
                         spentAddrClients.get( addr )?.forEach( client => client.send( msg ));
@@ -207,7 +212,7 @@ parentPort?.on("message", async msg => {
                         const msg = new MessageOutput({
                             utxoRef: forceTxOutRef( out ),
                             addr: Address.fromString( addr )
-                        }).toCborBytes();
+                        }).toCbor().toBuffer();
 
                         outputClients.get( addr )?.forEach( client => client.send( msg ));
                     })
@@ -218,20 +223,27 @@ parentPort?.on("message", async msg => {
 });
 
 app.post("/addAddrs", async ( req, res ) => {
-	console.log("!- APP ADDING A NEW ADDRESSES -!\n");
+	//debug
+	var rndm = Math.floor( Math.random() * 1000 );
+	console.log("!- APP ADDING NEW ADDRESSES [", rndm, "] -!\n");
+
     await addAddrs( req.body );
     res.status(200).send();
-	console.log("> ", req.body.length, " NEW ADDRESSES HAVE BEEN ADDED <\n");
+
+	//debug
+	console.log("> [", rndm, "] ", req.body.length, " NEW ADDRESSES HAVE BEEN ADDED <\n");
 });
 
 app.get("/utxos", async ( req, res ) => {
-	console.log("!- APP IS QUERING THR REQUESTED UTXOS -!\n");
+	//debug
+	console.log("!- APP IS QUERING THE REQUESTED UTXOS -!\n");
 
     res.status(200).send( await queryUtxos( req.body ) )
 });
 
 http_server.listen(( 3001 ), () => {
-	console.log("!- APP IS LISTENING ON PORT 3001 -!\n") 
+	//debug
+	console.log("!- THE SERVER IS LISTENING ON PORT 3001 -!\n") 
 });
 
 /**
@@ -502,6 +514,7 @@ function sendUtxoQueryRequest( addresses: AddressStr[] ): void
 {
     if( addresses.length > 0 )
     {
+		//debug
 		console.log("!- PARENT PORT IS POSTING NEW MESSAGE -!\n");
 
         parentPort?.postMessage({
@@ -652,7 +665,7 @@ function terminateClient( client: WebSocket )
  * - lock
  * - free
  */
-async function handleClientMessage( this: WebSocket, data: RawData, isBinary: boolean): Promise<void>
+async function handleClientMessage( this: WebSocket, data: RawData, isBinary: boolean ): Promise<void>
 {
     const client = this;
     // heartbeat
@@ -698,7 +711,7 @@ async function handleClientSub( client: WebSocket, req: ClientSub ): Promise<voi
                     const msg = new MessageSubFailure({
                         id,
                         errorType: 4
-                    }).toCborBytes();
+                    }).toCbor().toBuffer();
 
                     client.send( msg );
                     // client.send( addrNotFollowedMsg );
@@ -724,7 +737,7 @@ async function handleClientSub( client: WebSocket, req: ClientSub ): Promise<voi
                         const msg = new MessageSubFailure({
                             id,
                             errorType: 6
-                        }).toCborBytes();
+                        }).toCbor().toBuffer();
     
                         client.send( msg );
                         // client.send( unknownSubEvtByAddrMsg );
@@ -745,7 +758,7 @@ async function handleClientSub( client: WebSocket, req: ClientSub ): Promise<voi
                     const msg = new MessageSubFailure({
                         id,
                         errorType: 5
-                    }).toCborBytes();
+                    }).toCbor().toBuffer();
 
                     client.send( msg );
                     // client.send( utxoNotFoundMsg );
@@ -769,7 +782,7 @@ async function handleClientSub( client: WebSocket, req: ClientSub ): Promise<voi
                         const msg = new MessageSubFailure({
                             id,
                             errorType: 7
-                        }).toCborBytes();
+                        }).toCbor().toBuffer();
     
                         client.send( msg );
                         // client.send( unknownSubEvtByUTxORefMsg );
@@ -779,9 +792,11 @@ async function handleClientSub( client: WebSocket, req: ClientSub ): Promise<voi
             } );
         }
 
-        const msg = new MessageSubSuccess({ id }).toCborBytes();
+        const msg = new MessageSubSuccess({ id }).toCbor().toBuffer();
         client.send( msg );
     }
+
+	console.log("!- CLIENT SUB REQUEST HANDLED -!\n");
 }
 
 async function handleClientUnsub( client: WebSocket, req: ClientUnsub ): Promise<void>
@@ -854,7 +869,7 @@ async function handleClientReqFree( client: WebSocket, req: ClientReqFree ): Pro
                 failureType: 0,
                 utxoRefs: freed.map( ( ref ) => ( forceTxOutRef( ref ) ))
             }
-        }).toCborBytes();
+        }).toCbor().toBuffer();
         
         client.send( msg );
     }
@@ -866,7 +881,7 @@ async function handleClientReqFree( client: WebSocket, req: ClientReqFree ): Pro
                 successType: 0,
                 utxoRefs: freed.map(( ref ) => ( forceTxOutRef( ref ) ))
             }
-        }).toCborBytes();
+        }).toCbor().toBuffer();
         
         client.send( msg );
         
@@ -888,7 +903,7 @@ async function handleClientReqLock( client: WebSocket, req: ClientReqLock ): Pro
                     failureType: 1,
                     utxoRefs: lockable.map(( ref ) => ( forceTxOutRef( ref ) ))
                 }
-        }).toCborBytes();
+        }).toCbor().toBuffer();
 
         client.send( msg );
     }
@@ -903,7 +918,7 @@ async function handleClientReqLock( client: WebSocket, req: ClientReqLock ): Pro
                 successType: 0,
                 utxoRefs: lockable.map( ( ref ) => ( forceTxOutRef( ref ) ))
             }
-        }).toCborBytes();
+        }).toCbor().toBuffer();
 
         client.send( msg );
 
@@ -927,7 +942,7 @@ async function emitUtxoLockEvts( refs: TxOutRefStr[] ): Promise<void>
         const msg = new MessageLock({
             utxoRef: forceTxOutRef( data.ref ),
             addr: Address.fromString( data.addr )
-        }).toCborBytes();
+        }).toCbor().toBuffer();
 
         lockedUTxOClients
         .get( data.ref )
@@ -959,7 +974,7 @@ async function emitUtxoFreeEvts( refs: TxOutRefStr[] ): Promise<void>
         const msg = new MessageFree({
             utxoRef: forceTxOutRef( data.ref ),
             addr: Address.fromString( data.addr )
-        }).toCborBytes();
+        }).toCbor().toBuffer();
 
         freeUTxOClients
         .get( data.ref )

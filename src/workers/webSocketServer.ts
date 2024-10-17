@@ -8,16 +8,17 @@ import { addressIsFollowed, followAddr, isFollowingAddr } from "../redis/isFollo
 import { parseClientReq } from "@harmoniclabs/mutexo-messages/dist/utils/parsers";
 import { SavedFullTxOut, tryParseSavedTxOut } from "../funcs/saveUtxos";
 import { eventIndexToMutexoEventName } from "../utils/mutexEvents";
+import { fromUtf8, toHex } from "@harmoniclabs/uint8array-utils";
 import { getClientIp as getClientIpFromReq } from "request-ip";
 import { getRedisClient } from "../redis/getRedisClient";
 import { RawData, WebSocket, WebSocketServer } from "ws";
 import { isTxOutRefStr } from "../utils/isTxOutRefStr";
 import { filterInplace } from "../utils/filterInplace";
 import { tryGetBlockInfos } from "../types/BlockInfos";
-import { fromUtf8, toHex } from "@harmoniclabs/uint8array-utils";
 import { MutexoServerEvent } from "../wsServer/events";
 import { ValueJson } from "../types/UTxOWithStatus";
 import { isObject } from "@harmoniclabs/obj-utils";
+import { Logger, LogLevel } from "../utils/Logger";
 import { parentPort } from "node:worker_threads";
 import { ipRateLimit } from "../middlewares/ip";
 import { isAddrStr } from "../utils/isAddrStr";
@@ -27,7 +28,6 @@ import { webcrypto } from "node:crypto";
 import { URL } from "node:url";
 import express from "express";
 import http from "http";
-import { Logger, LogLevel } from "../utils/Logger";
 
 // close message
 const closeMsg = new MessageClose().toCbor().toBuffer();
@@ -52,9 +52,7 @@ logger.debug("!- WSS CONNECTION OPENING -!\n");
 
 const app = express();
 app.use(express.json());
-// app.use(cors());
 app.set("trust proxy", 1);
-
 
 const http_server = http.createServer(app);
 const wsServer = new WebSocketServer({ server: http_server, path: "/events", maxPayload: 512 });
@@ -94,7 +92,7 @@ wsServer.on("connection", async (client, req) =>
         return;
     }
 
-    logger.debug("> WSS AUTH : there is a token <", token);
+    logger.debug("> WSS CONNECTION AUTHORIZED WITH TOKEN: ", token, " <\n");
 
     const redis = await getRedisClient();
     const infos = await redis.hGetAll(`${TEMP_AUTH_TOKEN_PREFIX}:${token}`);
@@ -179,38 +177,34 @@ app.get("/wsAuth", ipRateLimit, async (req, res) => {
     res.status(200).send(tokenStr);
 });
 
-/*
-app.get("/utxos", async (req, res) => {
-    //debug
-    logger.debug("!- APP IS QUERING THE REQUESTED UTXOS -!\n");
+// app.get("/utxos", async (req, res) => {
+//     //debug
+//     logger.debug("!- APP IS QUERING THE REQUESTED UTXOS -!\n");
 
-    res.status(200).send(await queryUtxos(req.body))
-});
-//*/
+//     res.status(200).send(await queryUtxos(req.body))
+// });
 
-/*
-app.post("/addAddrs", async (req, res) => {
-    //debug
-    let rndm = Math.floor(Math.random() * 1000);
-    logger.debug("!- APP ADDING NEW ADDRESSES [", rndm, "] -!\n");
+// app.post("/addAddrs", async (req, res) => {
+//     //debug
+//     let rndm = Math.floor(Math.random() * 1000);
+//     logger.debug("!- APP ADDING NEW ADDRESSES [", rndm, "] -!\n");
 
-    const addrs = req.body;
+//     const addrs = req.body;
 
-    if (Array.isArray(addrs) && addrs[0]?.addr) {
-        await addAddrs(req.body);
-        res.status(200).send();
+//     if (Array.isArray(addrs) && addrs[0]?.addr) {
+//         await addAddrs(req.body);
+//         res.status(200).send();
 
-        //debug
-        logger.debug("> [", rndm, "] ", req.body.length, " NEW ADDRESSES HAVE BEEN ADDED <\n");
-    }
-    else {
-        res.status(400);
+//         //debug
+//         logger.debug("> [", rndm, "] ", req.body.length, " NEW ADDRESSES HAVE BEEN ADDED <\n");
+//     }
+//     else {
+//         res.status(400);
 
-        //debug
-        logger.debug("> [", rndm, "] ERROR: INVALID ADDRESSES <\n");
-    }
-});
-//*/
+//         //debug
+//         logger.debug("> [", rndm, "] ERROR: INVALID ADDRESSES <\n");
+//     }
+// });
 
 http_server.listen((3001), () => {
     //debug

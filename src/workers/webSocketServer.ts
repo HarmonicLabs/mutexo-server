@@ -14,7 +14,7 @@ import { RawData, WebSocket, WebSocketServer } from "ws";
 import { isTxOutRefStr } from "../utils/isTxOutRefStr";
 import { filterInplace } from "../utils/filterInplace";
 import { tryGetBlockInfos } from "../types/BlockInfos";
-import { toHex } from "@harmoniclabs/uint8array-utils";
+import { fromUtf8, toHex } from "@harmoniclabs/uint8array-utils";
 import { MutexoServerEvent } from "../wsServer/events";
 import { ValueJson } from "../types/UTxOWithStatus";
 import { isObject } from "@harmoniclabs/obj-utils";
@@ -69,8 +69,8 @@ async function leakingBucketOp(client: WebSocket): Promise<number> {
     return incr;
 }
 
-wsServer.on("connection", async (client, req) => {
-
+wsServer.on("connection", async (client, req) =>
+{
     if (logger.logLevel <= LogLevel.DEBUG) {
         //debug	
         let rndm = Math.floor(Math.random() * 1000);
@@ -93,6 +93,8 @@ wsServer.on("connection", async (client, req) => {
         client.terminate();
         return;
     }
+
+    logger.debug("> WSS AUTH : there is a token <", token);
 
     const redis = await getRedisClient();
     const infos = await redis.hGetAll(`${TEMP_AUTH_TOKEN_PREFIX}:${token}`);
@@ -149,11 +151,6 @@ wsServer.on("close", () => {
 
 // HTTP SERVER
 
-app.get('/', (req, res) => {
-    logger.debug("Root endpoint hit");
-    res.send("Server is running");
-});
-
 app.get("/wsAuth", ipRateLimit, async (req, res) => {
     //debug
     logger.debug("!- APP IS AUTHENTICATING -!\n");
@@ -182,13 +179,16 @@ app.get("/wsAuth", ipRateLimit, async (req, res) => {
     res.status(200).send(tokenStr);
 });
 
+/*
 app.get("/utxos", async (req, res) => {
     //debug
     logger.debug("!- APP IS QUERING THE REQUESTED UTXOS -!\n");
 
     res.status(200).send(await queryUtxos(req.body))
 });
+//*/
 
+/*
 app.post("/addAddrs", async (req, res) => {
     //debug
     let rndm = Math.floor(Math.random() * 1000);
@@ -210,6 +210,7 @@ app.post("/addAddrs", async (req, res) => {
         logger.debug("> [", rndm, "] ERROR: INVALID ADDRESSES <\n");
     }
 });
+//*/
 
 http_server.listen((3001), () => {
     //debug
@@ -219,7 +220,7 @@ http_server.listen((3001), () => {
 // CHAIN SYNC
 
 function stringToUint8Array(str: string): Uint8Array {
-    return new TextEncoder().encode(str);
+    return fromUtf8( str );
 }
 
 parentPort?.on("message", async (msg) => {

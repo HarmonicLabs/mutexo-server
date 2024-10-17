@@ -23,10 +23,11 @@ import { ipRateLimit } from "../middlewares/ip";
 import { isAddrStr } from "../utils/isAddrStr";
 import { unrawData } from "../utils/unrawData";
 import { sign, verify } from "jsonwebtoken";
-import { createServer } from "node:http";
 import { webcrypto } from "node:crypto";
 import { URL } from "node:url";
 import express from "express";
+import http from "http";
+import cors from "cors";
 
 // close message
 const closeMsg = new MessageClose().toCbor().toBuffer();
@@ -48,37 +49,14 @@ const unknownUnsubEvtMsg = new MessageError({ errorType: 10 }).toCbor().toBuffer
 console.log("!- WSS CONNECTION OPENING -!\n");
 
 const app = express();
-const http_server = createServer( app );
+app.use( express.json() );
+app.use( cors() );
+app.set( "trust proxy", 1 );
+
+const http_server = http.createServer( app );
 const wsServer = new WebSocketServer({ server: http_server, path: "/events", maxPayload: 512 });
 
-app.set("trust proxy", 1);
-
-app.get("/wsAuth", ipRateLimit, async ( req, res ) => {
-	//debug
-	console.log("!- APP IS AUTHENTICATING -!\n");
-    
-	const redis = await getRedisClient();
-    let secretBytes = new Uint8Array( 32 );
-    let tokenStr: string;
-    const ip = getClientIpFromReq( req );
-    do {
-        webcrypto.getRandomValues( secretBytes );
-        tokenStr = sign(
-            { ip },
-            Buffer.from( secretBytes ),
-            { expiresIn: 30 }
-        );
-    } while ( await redis.exists( `${TEMP_AUTH_TOKEN_PREFIX}:${tokenStr}` ) );
-
-    const key = `${TEMP_AUTH_TOKEN_PREFIX}:${tokenStr}`;
-
-    const secretHex = toHex( secretBytes );
-
-    await redis.hSet( key, { secretHex } );
-    await redis.expire( key, 30 );
-
-    res.status( 200 ).send( tokenStr );
-});
+// WSS
 
 async function leakingBucketOp( client: WebSocket ): Promise<number>
 {
@@ -168,6 +146,80 @@ wsServer.on("close", () => {
 	clearInterval( pingInterval ) 
 });
 
+// HTTP SERVER
+
+app.get('/', ( req, res ) => {
+  console.log("Root endpoint hit");
+  res.send("Server is running");
+});
+
+app.get("/wsAuth", ipRateLimit, async ( req, res ) => {
+	//debug
+	console.log("!- APP IS AUTHENTICATING -!\n");
+    
+	const redis = await getRedisClient();
+    let secretBytes = new Uint8Array( 32 );
+    let tokenStr: string;
+    const ip = getClientIpFromReq( req );
+    do 
+	{
+        webcrypto.getRandomValues( secretBytes );
+        tokenStr = sign(
+            { ip },
+            Buffer.from( secretBytes ),
+            { expiresIn: 30 }
+        );
+    } 
+	while ( await redis.exists( `${TEMP_AUTH_TOKEN_PREFIX}:${tokenStr}` ) );
+
+    const key = `${TEMP_AUTH_TOKEN_PREFIX}:${tokenStr}`;
+
+    const secretHex = toHex( secretBytes );
+
+    await redis.hSet( key, { secretHex } );
+    await redis.expire( key, 30 );
+
+    res.status( 200 ).send( tokenStr );
+});
+
+app.get("/utxos", async ( req, res ) => {
+	//debug
+	console.log("!- APP IS QUERING THE REQUESTED UTXOS -!\n");
+
+    res.status( 200 ).send( await queryUtxos( req.body ) )
+});
+
+app.post("/addAddrs", async ( req, res ) => {
+	//debug
+	var rndm = Math.floor( Math.random() * 1000 );
+	console.log("!- APP ADDING NEW ADDRESSES [", rndm, "] -!\n");
+
+	const addrs  = req.body;
+
+	if( Array.isArray( addrs ) && addrs[0]?.addr ) 
+	{
+        await addAddrs( req.body );
+    	res.status( 200 ).send();
+
+		//debug
+		console.log("> [", rndm, "] ", req.body.length, " NEW ADDRESSES HAVE BEEN ADDED <\n");
+    } 
+	else 
+	{
+        res.status( 400 );
+
+		//debug
+		console.log("> [", rndm, "] ERROR: INVALID ADDRESSES <\n");
+    }
+});
+
+http_server.listen(( 3001 ), () => {
+	//debug
+	console.log("!- THE SERVER IS LISTENING ON PORT 3001 -!\n") 
+});
+
+// CHAIN SYNC
+
 function stringToUint8Array( str: string ): Uint8Array 
 {
     return new TextEncoder().encode(str);
@@ -222,29 +274,7 @@ parentPort?.on("message", async ( msg ) => {
     }
 });
 
-app.post("/addAddrs", async ( req, res ) => {
-	//debug
-	var rndm = Math.floor( Math.random() * 1000 );
-	console.log("!- APP ADDING NEW ADDRESSES [", rndm, "] -!\n");
-
-    await addAddrs( req.body );
-    res.status(200).send();
-
-	//debug
-	console.log("> [", rndm, "] ", req.body.length, " NEW ADDRESSES HAVE BEEN ADDED <\n");
-});
-
-app.get("/utxos", async ( req, res ) => {
-	//debug
-	console.log("!- APP IS QUERING THE REQUESTED UTXOS -!\n");
-
-    res.status(200).send( await queryUtxos( req.body ) )
-});
-
-http_server.listen(( 3001 ), () => {
-	//debug
-	console.log("!- THE SERVER IS LISTENING ON PORT 3001 -!\n") 
-});
+// MESSAGE HANDLERS
 
 /**
  * it keeps track of the clients that are blocking a certain utxo

@@ -6,12 +6,12 @@ import { queryAddrsUtxos } from "./funcs/queryAddrsUtxos";
 import { syncAndAcquire } from "./funcs/syncAndAcquire";
 import { toHex } from "@harmoniclabs/uint8array-utils";
 import { filterInplace } from "./utils/filterInplace";
+import { appendFileSync, mkdirSync } from "node:fs";
 import { isObject } from "@harmoniclabs/obj-utils";
 import { saveUtxos } from "./funcs/saveUtxos";
 import { isAddrStr } from "./utils/isAddrStr";
 import { Worker } from "node:worker_threads";
 import { connect } from "net";
-import { appendFileSync, mkdirSync } from "node:fs";
 
 const webSocketServer = new Worker(__dirname + "/workers/webSocketServer.js");
 const blockParser = new Worker(__dirname + "/workers/blockParser.js");
@@ -39,6 +39,7 @@ blockParser.on("message", ( blockInfos ) => {
 blockParser.on("error", ( err ) => {
 	//debug
 	console.log("!- BLOCK PARSER THREAD ERRORED: -!\n", err, "\n");
+
     mkdirSync("./logs", { recursive: true });
     appendFileSync("./logs/blockParserErrors.log", `[${new Date().toString()}][BLOCK PARSER ERROR]: ` + err + "\n");
 });
@@ -128,10 +129,12 @@ function rollForwardBytesToBlockData( bytes: Uint8Array, defaultCborObj: CborObj
 {
     let cbor: CborObj | LazyCborObj
     
-    try {
+    try 
+	{
         cbor = Cbor.parse( bytes );
     }
-    catch {
+    catch 
+	{
         return Cbor.encode( defaultCborObj ).toBuffer();
     }
     

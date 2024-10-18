@@ -99,12 +99,8 @@ wsServer.on("connection", async ( client, req ) => {
     const redis = await getRedisClient();
     const infos = await redis.hGetAll(`${TEMP_AUTH_TOKEN_PREFIX}:${token}`);
 
-	logger.debug("> AAAAAAAAAAAAAAAAAAAAAAAaaa <\n");
-
     if( !infos ) 
 	{
-		logger.debug("> BBBBBBBBBBBBBBBBBBBBBBBBB <\n");
-
         client.send( invalidAuthTokenMsg );
         client.terminate();
         return;
@@ -115,14 +111,10 @@ wsServer.on("connection", async ( client, req ) => {
     let stuff: any
     try 
 	{
-		logger.debug("> CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC <\n");
-
         stuff = verify( token, Buffer.from( secretHex, "hex" ) );
     } 
 	catch 
 	{
-		logger.debug("> DDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDD <\n");
-
         client.send( invalidAuthTokenMsg );
         client.terminate();
         return;
@@ -131,13 +123,7 @@ wsServer.on("connection", async ( client, req ) => {
     setWsClientIp( client, ip );
     leakingBucketOp( client );
 
-	logger.debug("> EEEEEEEEEEEEEEEEEEEEEEEEEEe <\n");
-
-
     ( client as any ).isAlive = true;
-
-	logger.debug("> FFFFFFFFFFFFFFFFFFFFFFFFFFfff <\n");
-
 
     client.on("error", console.error);
     client.on("pong", heartbeat);
@@ -672,22 +658,20 @@ function terminateClient(client: WebSocket) {
  * - lock
  * - free
  */
-async function handleClientMessage( this: WebSocket, data: RawData, isBinary: boolean ): Promise<void> 
+async function handleClientMessage( this: WebSocket, data: RawData ): Promise<void> 
 {
     logger.debug("!- HANDLING MUTEXO CLIENT MESSAGE -!\n");
     	
 	const client = this;
     // heartbeat
     ( client as any ).isAlive = true;
-
-    const bytes = unrawData( data );
-
-    const reqsInLastMinute = await leakingBucketOp( client );
+	const reqsInLastMinute = await leakingBucketOp( client );
     if( reqsInLastMinute > LEAKING_BUCKET_MAX_CAPACITY ) 
 	{
         client.send( tooManyReqsMsg );
     }
 
+	const bytes = unrawData( data );
     // NO big messages
     if( bytes.length > 512 ) return;
 
@@ -702,11 +686,9 @@ async function handleClientMessage( this: WebSocket, data: RawData, isBinary: bo
 }
 
 async function handleClientSub( client: WebSocket, req: ClientSub ): Promise<void> 
-{
-    const rndm = Math.floor( Math.random() * 1000 );
-	logger.debug("!- HANDLING MUTEXO CLIENT SUB MESSAGE [", rndm, "] -!\n");
-    	
+{    	
 	const { id, eventType, filters } = req;
+	logger.debug("!- HANDLING MUTEXO CLIENT SUB MESSAGE [", id, "] -!\n");
 
     for( const filter of filters ) 
 	{
@@ -810,7 +792,7 @@ async function handleClientSub( client: WebSocket, req: ClientSub ): Promise<voi
         client.send( msg );
     }
 
-    logger.debug("!- [", rndm, "] MUTEXO CLIENT SUB REQUEST HANDLED -!\n");
+    logger.debug("!- [", id, "] MUTEXO CLIENT SUB REQUEST HANDLED -!\n");
 }
 
 async function handleClientUnsub(client: WebSocket, req: ClientUnsub): Promise<void> {

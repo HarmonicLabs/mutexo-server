@@ -51,10 +51,10 @@ const logger = new Logger({ logLevel: LogLevel.DEBUG });
 logger.debug("!- WSS CONNECTION OPENING -!\n");
 
 const app = express();
-app.use(express.json());
+app.use( express.json() );
 app.set("trust proxy", 1);
 
-const http_server = http.createServer(app);
+const http_server = http.createServer( app );
 const wsServer = new WebSocketServer({ server: http_server, path: "/events", maxPayload: 512 });
 
 // WSS
@@ -67,18 +67,19 @@ async function leakingBucketOp(client: WebSocket): Promise<number> {
     return incr;
 }
 
-wsServer.on("connection", async (client, req) =>
-{
-    if (logger.logLevel <= LogLevel.DEBUG) {
+wsServer.on("connection", async ( client, req ) => {
+    if( logger.logLevel <= LogLevel.DEBUG ) 
+	{
         //debug	
         let rndm = Math.floor(Math.random() * 1000);
         logger.debug("!- WSS HOOKED A NEW CONNECTION [", rndm, "] -!\n");
         logger.debug("> [", rndm, "] WSS CONNECTING TO: ", req.socket.remoteAddress, " <\n");
     }
 
-    const ip = getClientIpFromReq(req);
-    if (!ip) {
-        client.send(missingIpMsg);
+    const ip = getClientIpFromReq( req );
+    if( !ip ) 
+	{
+        client.send( missingIpMsg );
         client.terminate();
         return;
     }
@@ -86,8 +87,9 @@ wsServer.on("connection", async (client, req) =>
     const url = new URL(req.url ?? "", "ws://" + req.headers.host + "/");
     const token = url.searchParams.get("token");
 
-    if (!token) {
-        client.send(missingAuthTokenMsg);
+    if( !token ) 
+	{
+        client.send( missingAuthTokenMsg );
         client.terminate();
         return;
     }
@@ -97,8 +99,13 @@ wsServer.on("connection", async (client, req) =>
     const redis = await getRedisClient();
     const infos = await redis.hGetAll(`${TEMP_AUTH_TOKEN_PREFIX}:${token}`);
 
-    if (!infos) {
-        client.send(invalidAuthTokenMsg);
+	logger.debug("> AAAAAAAAAAAAAAAAAAAAAAAaaa <\n");
+
+    if( !infos ) 
+	{
+		logger.debug("> BBBBBBBBBBBBBBBBBBBBBBBBB <\n");
+
+        client.send( invalidAuthTokenMsg );
         client.terminate();
         return;
     }
@@ -106,34 +113,51 @@ wsServer.on("connection", async (client, req) =>
     const { secretHex } = infos;
 
     let stuff: any
-    try {
-        stuff = verify(token, Buffer.from(secretHex, "hex"));
-    } catch {
-        client.send(invalidAuthTokenMsg);
+    try 
+	{
+		logger.debug("> CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC <\n");
+
+        stuff = verify( token, Buffer.from( secretHex, "hex" ) );
+    } 
+	catch 
+	{
+		logger.debug("> DDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDD <\n");
+
+        client.send( invalidAuthTokenMsg );
         client.terminate();
         return;
     }
 
-    setWsClientIp(client, ip);
-    leakingBucketOp(client);
-    (client as any).isAlive = true;
+    setWsClientIp( client, ip );
+    leakingBucketOp( client );
+
+	logger.debug("> EEEEEEEEEEEEEEEEEEEEEEEEEEe <\n");
+
+
+    ( client as any ).isAlive = true;
+
+	logger.debug("> FFFFFFFFFFFFFFFFFFFFFFFFFFfff <\n");
+
+
     client.on("error", console.error);
     client.on("pong", heartbeat);
-    client.on("ping", function handleClientPing(this: WebSocket) { this.pong(); });
-    client.on("message", handleClientMessage.bind(client));
+    client.on("ping", function handleClientPing( this: WebSocket ) { this.pong(); });
+    client.on("message", handleClientMessage.bind( client ));
 });
 
 const pingInterval = setInterval(
     () => {
         const clients = wsServer.clients;
-        for (const client of clients) {
-            if (!isAlive(client)) {
-                client.send(closeMsg);
+        for(const client of clients) 
+		{
+            if( !isAlive( client ) )
+			{
+                client.send( closeMsg );
                 terminateClient(client);
                 return;
             }
 
-            (client as any).isAlive = false;
+            ( client as any ).isAlive = false;
             client.ping();
         }
     },
@@ -144,7 +168,7 @@ wsServer.on("close", () => {
     //debug
     logger.debug("!- WSS IS CLOSING A CONNECTION -!\n");
 
-    clearInterval(pingInterval)
+    clearInterval( pingInterval )
 });
 
 // HTTP SERVER
@@ -217,9 +241,10 @@ function stringToUint8Array(str: string): Uint8Array {
     return fromUtf8( str );
 }
 
-parentPort?.on("message", async (msg) => {
+parentPort?.on("message", async ( msg ) => {
     //debug
-    logger.debug("!- PARENT PORT RECEIVED A NEW MESSAGE: -!\n", msg, "\n");
+    logger.debug("!- PARENT PORT RECEIVED A NEW MESSAGE: -!\n");
+	logger.debug("> MESSAGE: ", msg, " <\n");
 
     if (!isObject(msg)) return;
     if (msg.type === "Block") {
@@ -647,55 +672,67 @@ function terminateClient(client: WebSocket) {
  * - lock
  * - free
  */
-async function handleClientMessage(this: WebSocket, data: RawData, isBinary: boolean): Promise<void> {
-    const client = this;
+async function handleClientMessage( this: WebSocket, data: RawData, isBinary: boolean ): Promise<void> 
+{
+    logger.debug("!- HANDLING MUTEXO CLIENT MESSAGE -!\n");
+    	
+	const client = this;
     // heartbeat
-    (client as any).isAlive = true;
+    ( client as any ).isAlive = true;
 
-    const bytes = unrawData(data);
+    const bytes = unrawData( data );
 
-    const reqsInLastMinute = await leakingBucketOp(client);
-    if (reqsInLastMinute > LEAKING_BUCKET_MAX_CAPACITY) {
-        client.send(tooManyReqsMsg);
+    const reqsInLastMinute = await leakingBucketOp( client );
+    if( reqsInLastMinute > LEAKING_BUCKET_MAX_CAPACITY ) 
+	{
+        client.send( tooManyReqsMsg );
     }
 
     // NO big messages
-    if (bytes.length > 512) return;
+    if( bytes.length > 512 ) return;
 
-    const req: ClientReq = parseClientReq(bytes);
+    const req: ClientReq = parseClientReq( bytes );
 
-    if (req instanceof ClientSub) return handleClientSub(client, req);
-    else if (req instanceof ClientUnsub) return handleClientUnsub(client, req);
-    else if (req instanceof ClientReqFree) return handleClientReqFree(client, req);
-    else if (req instanceof ClientReqLock) return handleClientReqLock(client, req);
+    if 		( req instanceof ClientSub ) 		return handleClientSub( client, req );
+    else if ( req instanceof ClientUnsub ) 		return handleClientUnsub( client, req );
+    else if ( req instanceof ClientReqFree ) 	return handleClientReqFree( client, req );
+    else if ( req instanceof ClientReqLock ) 	return handleClientReqLock( client, req );
 
     return;
 }
 
-async function handleClientSub(client: WebSocket, req: ClientSub): Promise<void> {
-    const { id, eventType, filters } = req;
+async function handleClientSub( client: WebSocket, req: ClientSub ): Promise<void> 
+{
+    const rndm = Math.floor( Math.random() * 1000 );
+	logger.debug("!- HANDLING MUTEXO CLIENT SUB MESSAGE [", rndm, "] -!\n");
+    	
+	const { id, eventType, filters } = req;
 
-    for (const filter of filters) {
-        const evtName = eventIndexToMutexoEventName(eventType);
+    for( const filter of filters ) 
+	{
+        const evtName = eventIndexToMutexoEventName( eventType );
 
-        if (filter instanceof AddrFilter) {
+        if( filter instanceof AddrFilter ) 
+		{
             const addrStr = filter.addr.toString();
 
-            isFollowingAddr(addrStr)
-                .then(async (isFollowing) => {
-                    if (!isFollowing) {
+            isFollowingAddr( addrStr ).then( 
+				async ( isFollowing ) => {
+                    if( !isFollowing ) 
+					{
                         const msg = new MessageSubFailure({
                             id,
                             errorType: 4
                         }).toCbor().toBuffer();
 
-                        client.send(msg);
+                        client.send( msg );
                         // client.send( addrNotFollowedMsg );
 
                         return;
                     }
 
-                    switch (evtName) {
+                    switch( evtName ) 
+					{
                         case MutexoServerEvent.Lock:
                             subClientToLockedAddr(addrStr, client);
                             break;
@@ -714,32 +751,36 @@ async function handleClientSub(client: WebSocket, req: ClientSub): Promise<void>
                                 errorType: 6
                             }).toCbor().toBuffer();
 
-                            client.send(msg);
+                            client.send( msg );
                             // client.send( unknownSubEvtByAddrMsg );
 
                             return;
                     }
-                });
+                }
+			);
         }
-        else if (filter instanceof UtxoFilter) {
+        else if( filter instanceof UtxoFilter ) 
+		{
             const ref = filter.utxoRef.toString();
 
-            getRedisClient()
-                .then(async (redis) => {
+            getRedisClient().then(
+				async ( redis ) => {
                     const addr = await redis.hGet(`${UTXO_PREFIX}:${ref}`, "addr") as AddressStr | undefined;
-                    if (!addr || !await isFollowingAddr(addr)) {
+                    if( !addr || !await isFollowingAddr(addr) ) 
+					{
                         const msg = new MessageSubFailure({
                             id,
                             errorType: 5
                         }).toCbor().toBuffer();
 
-                        client.send(msg);
+                        client.send( msg );
                         // client.send( utxoNotFoundMsg );
 
                         return;
                     }
 
-                    switch (evtName) {
+                    switch( evtName ) 
+					{
                         case MutexoServerEvent.Lock:
                             subClientToLockedUTxO(ref, client);
                             break;
@@ -756,19 +797,20 @@ async function handleClientSub(client: WebSocket, req: ClientSub): Promise<void>
                                 errorType: 7
                             }).toCbor().toBuffer();
 
-                            client.send(msg);
+                            client.send( msg );
                             // client.send( unknownSubEvtByUTxORefMsg );
 
                             return;
                     }
-                });
+                }
+			);
         }
 
         const msg = new MessageSubSuccess({ id }).toCbor().toBuffer();
-        client.send(msg);
+        client.send( msg );
     }
 
-    logger.debug("!- CLIENT SUB REQUEST HANDLED -!\n");
+    logger.debug("!- [", rndm, "] MUTEXO CLIENT SUB REQUEST HANDLED -!\n");
 }
 
 async function handleClientUnsub(client: WebSocket, req: ClientUnsub): Promise<void> {
@@ -948,7 +990,7 @@ async function emitUtxoFreeEvts(refs: TxOutRefStr[]): Promise<void> {
 }
 
 function heartbeat(this: WebSocket) {
-    (this as any).isAlive = true;
+    ( this as any ).isAlive = true;
 }
 
 function isAlive(thing: any): boolean {

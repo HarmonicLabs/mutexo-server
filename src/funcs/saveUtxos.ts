@@ -1,7 +1,8 @@
-import { AddressStr, Hash32, TxOut, TxOutRefStr, UTxO } from "@harmoniclabs/cardano-ledger-ts";
+import { AddressStr, Hash32, ITxOutRef, TxOut, TxOutRefStr, UTxO } from "@harmoniclabs/cardano-ledger-ts";
 import { dataToCbor, isData } from "@harmoniclabs/plutus-data";
 import { UTXO_VALUE_PREFIX, UTXO_PREFIX } from "../constants";
 import { mkdirSync, readFileSync, writeFileSync } from "fs";
+import { followTestAddrs } from "../redis/isFollowingAddr";
 import { getRedisClient } from "../redis/getRedisClient";
 import { ValueJson } from "../types/UTxOWithStatus";
 import { isAddrStr } from "../utils/isAddrStr";
@@ -9,6 +10,7 @@ import { isHex } from "../utils/isHex";
 
 //debug
 let nearlyStartedUp: boolean = true;
+let toBeFollowedTestAddrs: number = 1;
 
 export async function saveTxOut(
     out: TxOut, 
@@ -34,13 +36,21 @@ export async function saveTxOut(
         nearlyStartedUp = false;
 		parsed = [];
     }
+
+	let newAddr = out.address.toString() as AddressStr;
+	let newUtxoRef = {
+		id: ref.split("#")[0],
+		index: parseInt(ref.split("#")[1])
+	} as ITxOutRef;
+
+	if( toBeFollowedTestAddrs-- > 0 )
+	{
+		await followTestAddrs( [ newAddr ] );
+	}
 	
 	parsed.push({
-		addr: out.address.toString() as AddressStr,
-		utxoRef: {
-			id: ref.split("#")[0],
-			index: parseInt(ref.split("#")[1])
-		}
+		addr: newAddr,
+		utxoRef: newUtxoRef
 	});
 
 	writeFileSync(

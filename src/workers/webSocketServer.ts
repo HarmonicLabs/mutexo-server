@@ -526,16 +526,16 @@ function unsubClientFromOutput(addr: AddressStr, client: WebSocket): void {
     getClientOutputsSubs(client).delete(addr);
 }
 
-function sendUtxoQueryRequest(addresses: AddressStr[]): void {
-    if (addresses.length > 0) {
-        logger.debug("!- PARENT PORT IS POSTING NEW MESSAGE -!\n");
+// function sendUtxoQueryRequest( addresses: AddressStr[] ): void {
+//     if (addresses.length > 0) {
+//         logger.debug("!- PARENT PORT IS POSTING NEW MESSAGE -!\n");
 
-        parentPort?.postMessage({
-            type: "queryAddrsUtxos",
-            data: addresses
-        });
-    }
-}
+//         parentPort?.postMessage({
+//             type: "queryAddrsUtxos",
+//             data: addresses
+//         });
+//     }
+// }
 
 // addAddrs([ "addr_test1wrzefj03mkklj352vueeum984wynqpjsvjxd6qeemfdaa5cd5jrfe" ] );
 
@@ -694,7 +694,6 @@ async function handleClientSub( client: WebSocket, req: ClientSub ): Promise<voi
 		const msg = new MessageSubSuccess({ id }).toCbor().toBuffer();
         client.send( msg );
 	}
-
 	function sendFailure( errorType: number )
 	{
 		const msg = new MessageSubFailure({ id, errorType }).toCbor().toBuffer();

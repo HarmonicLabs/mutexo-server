@@ -214,3 +214,27 @@ Error: Invalid CBOR format for "TxBody";
 [Tue Oct 22 2024 15:14:14 GMT+0200 (Central European Summer Time)][BLOCK PARSER ERROR]: Error: ENOENT: no such file or directory, open '../../mutexo-tests-objs/mutexoTestPreviewTransactions.json'
 [Tue Oct 22 2024 15:14:43 GMT+0200 (Central European Summer Time)][BLOCK PARSER ERROR]: SyntaxError: Unexpected end of JSON input
 [Tue Oct 22 2024 15:17:16 GMT+0200 (Central European Summer Time)][BLOCK PARSER ERROR]: SyntaxError: Unexpected end of JSON input
+[Tue Oct 22 2024 16:00:37 GMT+0200 (Central European Summer Time)][BLOCK PARSER ERROR]: Error: {
+ "block": "8404af88be9dff40fc82de06133d4d08a917c58066001b89dc322f8f08264884",
+ "tx_body": "a300d9010281825820fbcaaf733117c2ab46f6a4df6583307122710f37c99b31833aa51988143204af1821018182581d60da0eb5ed7611482ec5089b69d870e0c56c1c45180256112398e0835b1b00000002540be400021a00030d40",
+ "tx_i": 2,
+ "n_txs": 4,
+ "error": "Invalid CBOR format for \"TxBody\"; ",
+ "stack": "Error: Invalid CBOR format for \"TxBody\"; \n    at new InvalidCborFormatError (/home/raffa/Desktop/projects/mutexo-server/node_modules/@harmoniclabs/cardano-ledger-ts/dist/utils/InvalidCborFormatError.js:23:23)\n    at TxBody.fromCborObj (/home/raffa/Desktop/projects/mutexo-server/node_modules/@harmoniclabs/cardano-ledger-ts/dist/tx/body/TxBody.js:303:19)\n    at TxBody.fromCbor (/home/raffa/Desktop/projects/mutexo-server/node_modules/@harmoniclabs/cardano-ledger-ts/dist/tx/body/TxBody.js:278:23)\n    at _loop_1 (/home/raffa/Desktop/projects/mutexo-server/dist/workers/blockParser.js:100:61)\n    at MessagePort.<anonymous> (/home/raffa/Desktop/projects/mutexo-server/dist/workers/blockParser.js:127:25)\n    at step (/home/raffa/Desktop/projects/mutexo-server/dist/workers/blockParser.js:33:23)\n    at Object.next (/home/raffa/Desktop/projects/mutexo-server/dist/workers/blockParser.js:14:53)\n    at fulfilled (/home/raffa/Desktop/projects/mutexo-server/dist/workers/blockParser.js:5:58)\n    at process.processTicksAndRejections (node:internal/process/task_queues:95:5)"
+}
+[Tue Oct 22 2024 16:31:40 GMT+0200 (Central European Summer Time)][BLOCK PARSER ERROR]: Error: {
+ "block": "f2e3c3b4908fe097a06a546e1ef94677159ec4e57eaf0ecbb8d0ca6c616c5b73",
+ "tx_body": "a300d9010281825820fbcaaf733117c2ab46f6a4df6583307122710f37c99b31833aa51988143204af18220181825839006b17e9d0dcd906d12edc67b2bd165a2a6e320fb13d033d98656950ff06c35167cc90f7f19515d5a58bf6fdcba63545888f63c323c273af701b00000002540be400021a00030d40",
+ "tx_i": 0,
+ "n_txs": 1,
+ "error": "Invalid CBOR format for \"TxBody\"; ",
+ "stack": "Error: Invalid CBOR format for \"TxBody\"; \n    at new InvalidCborFormatError (/home/raffa/Desktop/projects/mutexo-server/node_modules/@harmoniclabs/cardano-ledger-ts/dist/utils/InvalidCborFormatError.js:23:23)\n    at TxBody.fromCborObj (/home/raffa/Desktop/projects/mutexo-server/node_modules/@harmoniclabs/cardano-ledger-ts/dist/tx/body/TxBody.js:303:19)\n    at TxBody.fromCbor (/home/raffa/Desktop/projects/mutexo-server/node_modules/@harmoniclabs/cardano-ledger-ts/dist/tx/body/TxBody.js:278:23)\n    at _loop_1 (/home/raffa/Desktop/projects/mutexo-server/dist/workers/blockParser.js:100:61)\n    at MessagePort.<anonymous> (/home/raffa/Desktop/projects/mutexo-server/dist/workers/blockParser.js:127:25)\n    at step (/home/raffa/Desktop/projects/mutexo-server/dist/workers/blockParser.js:33:23)\n    at Object.next (/home/raffa/Desktop/projects/mutexo-server/dist/workers/blockParser.js:14:53)\n    at fulfilled (/home/raffa/Desktop/projects/mutexo-server/dist/workers/blockParser.js:5:58)\n    at process.processTicksAndRejections (node:internal/process/task_queues:95:5)"
+}
+[Tue Oct 22 2024 16:52:39 GMT+0200 (Central European Summer Time)][BLOCK PARSER ERROR]: Error: {
+ "block": "dd9e8a211bb17ce1863f6ac2e339a35255d6c5e186d6f2df620a3f3f63cd1dbb",
+ "tx_body": "a500818258201bd73f5790c81f0a276ac47febecbe17994471101cde34b7cca405287e33d84500018182583900605956c0cc10678a5a47e519f2ff5e835912df99212b1c8936bad199d154b2612ac787f998dfe6f30575807ddcb6eb4142cc7d816afa3a4c1a08997d24021a00029d85031a03c0e95105a1581de0d154b2612ac787f998dfe6f30575807ddcb6eb4142cc7d816afa3a4c1a084fcf69",
+ "tx_i": 0,
+ "n_txs": 2,
+ "error": "'Hash28' must be an hash of length 28",
+ "stack": "Error: 'Hash28' must be an hash of length 28\n    at assert (/home/raffa/Desktop/projects/mutexo-server/node_modules/@harmoniclabs/cardano-ledger-ts/dist/utils/assert.js:42:11)\n    at new Hash28 (/home/raffa/Desktop/projects/mutexo-server/node_modules/@harmoniclabs/cardano-ledger-ts/dist/hashes/Hash28/Hash28.js:27:29)\n    at Hash28.fromCborObj (/home/raffa/Desktop/projects/mutexo-server/node_modules/@harmoniclabs/cardano-ledger-ts/dist/hashes/Hash28/Hash28.js:42:16)\n    at /home/raffa/Desktop/projects/mutexo-server/node_modules/@harmoniclabs/cardano-ledger-ts/dist/ledger/TxWithdrawals.js:115:48\n    at Array.map (<anonymous>)\n    at TxWithdrawals.fromCborObj (/home/raffa/Desktop/projects/mutexo-server/node_modules/@harmoniclabs/cardano-ledger-ts/dist/ledger/TxWithdrawals.js:110:43)\n    at TxBody.fromCborObj (/home/raffa/Desktop/projects/mutexo-server/node_modules/@harmoniclabs/cardano-ledger-ts/dist/tx/body/TxBody.js:316:90)\n    at TxBody.fromCbor (/home/raffa/Desktop/projects/mutexo-server/node_modules/@harmoniclabs/cardano-ledger-ts/dist/tx/body/TxBody.js:278:23)\n    at _loop_1 (/home/raffa/Desktop/projects/mutexo-server/dist/workers/blockParser.js:100:61)\n    at MessagePort.<anonymous> (/home/raffa/Desktop/projects/mutexo-server/dist/workers/blockParser.js:127:25)"
+}

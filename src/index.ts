@@ -3,7 +3,6 @@ import { Cbor, CborArray, CborBytes, CborObj, CborTag, LazyCborArray, LazyCborOb
 import { revertBlocksUntilHash } from "./redis/revertBlocksUntilHash";
 import { Address, AddressStr } from "@harmoniclabs/cardano-ledger-ts";
 import { queryAddrsUtxos } from "./funcs/queryAddrsUtxos";
-import { followTestAddrs } from "./redis/isFollowingAddr";
 import { syncAndAcquire } from "./funcs/syncAndAcquire";
 import { toHex } from "@harmoniclabs/uint8array-utils";
 import { filterInplace } from "./utils/filterInplace";
@@ -90,13 +89,6 @@ void async function main()
                     addrs.map( addr => Address.fromString( addr ) )
                 )
             );
-
-			//debug
-			if( nearlyStartedUp )
-			{
-				nearlyStartedUp = false;
-				await followTestAddrs( addrs );
-			}
         }
     })
 

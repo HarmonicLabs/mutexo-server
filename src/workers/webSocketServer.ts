@@ -67,6 +67,14 @@ async function leakingBucketOp( client: WebSocket ): Promise<number>
     return incr;
 }
 
+async function debug_resetLeakingBucketFor( client: WebSocket ): Promise<void>
+{ 
+    const ip = getWsClientIp( client );
+    const redis = await getRedisClient();
+
+    redis.del( `${LEAKING_BUCKET_BY_IP_PREFIX}:${ip}` );
+}
+
 wsServer.on("connection", async ( client, req ) => {
     if( logger.logLevel <= LogLevel.DEBUG ) 
 	{
@@ -79,7 +87,7 @@ wsServer.on("connection", async ( client, req ) => {
     if( !ip ) 
 	{
         client.send( missingIpMsg );
-        client.terminate();
+        terminateClient( client );
         return;
     }
 
@@ -89,7 +97,7 @@ wsServer.on("connection", async ( client, req ) => {
     if( !token ) 
 	{
         client.send( missingAuthTokenMsg );
-        client.terminate();
+        terminateClient( client );
         return;
     }
 
@@ -101,7 +109,7 @@ wsServer.on("connection", async ( client, req ) => {
     if( !infos ) 
 	{
         client.send( invalidAuthTokenMsg );
-        client.terminate();
+        terminateClient( client );
         return;
     }
 
@@ -115,7 +123,7 @@ wsServer.on("connection", async ( client, req ) => {
 	catch 
 	{
         client.send( invalidAuthTokenMsg );
-        client.terminate();
+        terminateClient( client );
         return;
     }
 
@@ -651,6 +659,7 @@ function unsubAll(client: WebSocket) {
 
 function terminateClient(client: WebSocket) {
     unsubAll(client);
+    debug_resetLeakingBucketFor(client);
     client.terminate();
 }
 

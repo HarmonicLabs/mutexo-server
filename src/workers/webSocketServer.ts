@@ -54,9 +54,9 @@ app.use( express.json() );
 app.set("trust proxy", 1);
 
 const http_server = http.createServer( app );
-const wsServer = new WebSocketServer({ server: http_server, path: "/events", maxPayload: 512 });
 
 // WSS
+const wsServer = new WebSocketServer({ server: http_server, path: "/events", maxPayload: 512 });
 
 async function leakingBucketOp( client: WebSocket ): Promise<number> 
 {
@@ -74,6 +74,39 @@ async function debug_resetLeakingBucketFor( client: WebSocket ): Promise<void>
 
     redis.del( `${LEAKING_BUCKET_BY_IP_PREFIX}:${ip}` );
 }
+
+const pingInterval = setInterval(
+    () => {
+        const clients = wsServer.clients;
+        for(const client of clients) 
+		{
+            if( !isAlive( client ) )
+			{
+                client.send( closeMsg );
+                terminateClient(client);
+                return;
+            }
+
+            ( client as any ).isAlive = false;
+            client.ping();
+        }
+    },
+    30_000
+);
+
+function terminateAll()
+{
+    const clients = wsServer.clients;
+    for(const client of clients)
+    {
+        client.send( closeMsg );
+        terminateClient(client);
+    }
+}
+
+process.on("beforeExit", terminateAll);
+wsServer.on("error", console.error);
+wsServer.on("close", terminateAll);
 
 wsServer.on("connection", async ( client, req ) => {
     if( logger.logLevel <= LogLevel.DEBUG ) 
@@ -138,24 +171,7 @@ wsServer.on("connection", async ( client, req ) => {
     client.on("message", handleClientMessage.bind( client ));
 });
 
-const pingInterval = setInterval(
-    () => {
-        const clients = wsServer.clients;
-        for(const client of clients) 
-		{
-            if( !isAlive( client ) )
-			{
-                client.send( closeMsg );
-                terminateClient(client);
-                return;
-            }
 
-            ( client as any ).isAlive = false;
-            client.ping();
-        }
-    },
-    30_000
-);
 
 wsServer.on("close", () => {    
     logger.debug("!- WSS IS CLOSING A CONNECTION -!\n");
@@ -669,7 +685,7 @@ function terminateClient(client: WebSocket) {
  * - lock
  * - free
  */
-async function handleClientMessage( this: WebSocket, data: RawData ): Promise<void> 
+async function handleClientMessage( this: WebSocket, data: RawData ): Promise<void>
 {
     logger.debug("!- HANDLING MUTEXO CLIENT MESSAGE -!\n");
     	

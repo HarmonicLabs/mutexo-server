@@ -1,7 +1,6 @@
 import { AddrFilter, ClientReq, ClientReqFree, ClientReqLock, ClientSub, ClientUnsub, MessageClose, MessageError, MessageMutexFailure, MessageFree, MessageInput, MessageLock, MessageOutput, MessageMutexSuccess, UtxoFilter } from "@harmoniclabs/mutexo-messages";
 import { getClientUtxoSpentSubs, getClientAddrSpentSubs, getClientOutputsSubs, setWsClientIp, getWsClientIp, getClientUtxoFreeSubs, getClientUtxoLockSubs, getClientAddrFreeSubs, getClientAddrLockSubs } from "../wsServer/clientProps";
 import { LEAKING_BUCKET_BY_IP_PREFIX, LEAKING_BUCKET_MAX_CAPACITY, LEAKING_BUCKET_TIME, TEMP_AUTH_TOKEN_PREFIX, UTXO_PREFIX, UTXO_VALUE_PREFIX } from "../constants";
-import { addressIsFollowed, followAddr, followTestAddrs, isFollowingAddr, verifyFollowedTestAddrs } from "../redis/isFollowingAddr";
 import { Address, AddressStr, forceTxOutRef, forceTxOutRefStr, TxOutRefStr } from "@harmoniclabs/cardano-ledger-ts";
 import { MessageSubFailure } from "@harmoniclabs/mutexo-messages/dist/messages/MessageSubFailure";
 import { MessageSubSuccess } from "@harmoniclabs/mutexo-messages/dist/messages/MessageSubSuccess";
@@ -10,6 +9,7 @@ import { SavedFullTxOut, tryParseSavedTxOut } from "../funcs/saveUtxos";
 import { eventIndexToMutexoEventName } from "../utils/mutexEvents";
 import { fromUtf8, toHex } from "@harmoniclabs/uint8array-utils";
 import { getClientIp as getClientIpFromReq } from "request-ip";
+import { isFollowingAddr } from "../redis/isFollowingAddr";
 import { getRedisClient } from "../redis/getRedisClient";
 import { RawData, WebSocket, WebSocketServer } from "ws";
 import { isTxOutRefStr } from "../utils/isTxOutRefStr";
@@ -47,14 +47,6 @@ const unknownUnsubEvtMsg = new MessageError({ errorType: 10 }).toCbor().toBuffer
 // const unknownSubFilter = new MessageError({ errorType: 11 }).toCbor().toBuffer();           	//TODO: create a new "unknown filter" error type
 
 const logger = new Logger({ logLevel: LogLevel.DEBUG });
-
-logger.debug("!- STARTUP CONFIG -!\n");
-const startup = async () => { 
-	await followTestAddrs(); 
-	await verifyFollowedTestAddrs();
-}
-startup();
-logger.debug("> STARTUP COMPLETED <\n");
 
 logger.debug("!- WSS CONNECTION OPENING -!\n");
 const app = express();

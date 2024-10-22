@@ -1,20 +1,57 @@
 import { AddressStr, Hash32, TxOut, TxOutRefStr, UTxO } from "@harmoniclabs/cardano-ledger-ts";
-import { getRedisClient } from "../redis/getRedisClient";
 import { dataToCbor, isData } from "@harmoniclabs/plutus-data";
 import { UTXO_VALUE_PREFIX, UTXO_PREFIX } from "../constants";
+import { mkdirSync, readFileSync, writeFileSync } from "fs";
+import { getRedisClient } from "../redis/getRedisClient";
 import { ValueJson } from "../types/UTxOWithStatus";
 import { isAddrStr } from "../utils/isAddrStr";
 import { isHex } from "../utils/isHex";
+
+//debug
+let nearlyStartedUp: boolean = true;
 
 export async function saveTxOut(
     out: TxOut, 
     ref: TxOutRefStr
 ): Promise<void>
 {
-    const redis = await getRedisClient();
+	//--- debug ---
+    mkdirSync("./../mutexo-tests-objs", { recursive: true });
+	const jsonString = readFileSync("./../mutexo-tests-objs/mutexoTestPreviewTransactions.json", "utf-8");
+	let parsed;
 
+	try
+	{
+		parsed = JSON.parse( jsonString );
+	}
+	catch
+	{
+		parsed = [];
+	}
+	
+    if( nearlyStartedUp ) 
+	{
+        nearlyStartedUp = false;
+		parsed = [];
+    }
+	
+	parsed.push({
+		addr: out.address.toString() as AddressStr,
+		utxoRef: {
+			id: ref.split("#")[0],
+			index: parseInt(ref.split("#")[1])
+		}
+	});
+
+	writeFileSync(
+		"./../mutexo-tests-objs/mutexoTestPreviewTransactions.json", 
+		JSON.stringify( parsed, null, 2 )
+	);
+	//-----------
+
+    const redis = await getRedisClient();
     await Promise.all([
-        redis.json.set( `${UTXO_VALUE_PREFIX}:${ref}`, "$", out.value.toJson() as ValueJson ),
+		redis.json.set( `${UTXO_VALUE_PREFIX}:${ref}`, "$", out.value.toJson() as ValueJson ),
         redis.hSet(
             `${UTXO_PREFIX}:${ref}`,
             {

@@ -3,6 +3,7 @@ import { Cbor, CborArray, CborBytes, CborObj, CborTag, LazyCborArray, LazyCborOb
 import { revertBlocksUntilHash } from "./redis/revertBlocksUntilHash";
 import { Address, AddressStr } from "@harmoniclabs/cardano-ledger-ts";
 import { queryAddrsUtxos } from "./funcs/queryAddrsUtxos";
+import { followTestAddrs } from "./redis/isFollowingAddr";
 import { syncAndAcquire } from "./funcs/syncAndAcquire";
 import { toHex } from "@harmoniclabs/uint8array-utils";
 import { filterInplace } from "./utils/filterInplace";
@@ -12,6 +13,9 @@ import { saveUtxos } from "./funcs/saveUtxos";
 import { isAddrStr } from "./utils/isAddrStr";
 import { Worker } from "node:worker_threads";
 import { connect } from "net";
+
+//debug
+let nearlyStartedUp: boolean = true;
 
 const webSocketServer = new Worker(__dirname + "/workers/webSocketServer.js");
 const blockParser = new Worker(__dirname + "/workers/blockParser.js");
@@ -86,6 +90,13 @@ void async function main()
                     addrs.map( addr => Address.fromString( addr ) )
                 )
             );
+
+			//debug
+			if( nearlyStartedUp )
+			{
+				nearlyStartedUp = false;
+				await followTestAddrs( addrs );
+			}
         }
     })
 

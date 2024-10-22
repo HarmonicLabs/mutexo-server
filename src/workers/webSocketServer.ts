@@ -673,9 +673,10 @@ function unsubAll(client: WebSocket) {
     unsubAllLockedAddr(client);
 }
 
-function terminateClient(client: WebSocket) {
-    unsubAll(client);
-    debug_resetLeakingBucketFor(client);
+function terminateClient( client: WebSocket ) 
+{
+    unsubAll( client );
+    debug_resetLeakingBucketFor( client );
     client.terminate();
 }
 
@@ -709,7 +710,7 @@ async function handleClientMessage( this: WebSocket, data: RawData ): Promise<vo
     const req: ClientReq = parseClientReq( bytes );
 
     if      ( req instanceof MessageClose )         return terminateClient( client );
-    if      ( req instanceof ClientSub )            return handleClientSub( client, req );
+    else if ( req instanceof ClientSub )            return handleClientSub( client, req );
     else if ( req instanceof ClientUnsub )          return handleClientUnsub( client, req );
     else if ( req instanceof ClientReqFree )        return handleClientReqFree( client, req );
     else if ( req instanceof ClientReqLock )        return handleClientReqLock( client, req );
@@ -776,7 +777,6 @@ async function handleClientSub( client: WebSocket, req: ClientSub ): Promise<voi
 
                             sendSuccess();
                             return;
-                            break;
                         }
                         case MutexoServerEvent.Free: {
                             logger.debug("> 9 <\n");
@@ -787,7 +787,6 @@ async function handleClientSub( client: WebSocket, req: ClientSub ): Promise<voi
 
                             sendSuccess();
                             return;
-                            break;
                         }
                         case MutexoServerEvent.Input: {
 
@@ -799,7 +798,6 @@ async function handleClientSub( client: WebSocket, req: ClientSub ): Promise<voi
 
                             sendSuccess();
                             return;
-                            break;
                         }
                         case MutexoServerEvent.Output: {
                             logger.debug("> 12 <\n");
@@ -810,7 +808,6 @@ async function handleClientSub( client: WebSocket, req: ClientSub ): Promise<voi
 
                             sendSuccess();
                             return;
-                            break;
                         }
                         default: {
                             sendFailure(6);

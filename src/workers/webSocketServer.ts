@@ -693,9 +693,13 @@ async function handleClientMessage( this: WebSocket, data: RawData ): Promise<vo
     // heartbeat
     ( client as any ).isAlive = true;
 	const reqsInLastMinute = await leakingBucketOp( client );
+
+	console.log( reqsInLastMinute );
+
     if( reqsInLastMinute > LEAKING_BUCKET_MAX_CAPACITY ) 
 	{
         client.send( tooManyReqsMsg );
+		return;
     }
 
 	const bytes = unrawData( data );

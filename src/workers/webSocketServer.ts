@@ -708,7 +708,7 @@ async function handleClientMessage( this: WebSocket, data: RawData ): Promise<vo
 
     const req: ClientReq = parseClientReq( bytes );
 
-    if      ( req instanceof MessageMutexFailure )  return terminateClient( client );
+    if      ( req instanceof MessageClose )  return terminateClient( client );
     if      ( req instanceof ClientSub )            return handleClientSub( client, req );
     else if ( req instanceof ClientUnsub )          return handleClientUnsub( client, req );
     else if ( req instanceof ClientReqFree )        return handleClientReqFree( client, req );

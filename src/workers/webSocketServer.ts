@@ -58,12 +58,21 @@ const http_server = http.createServer( app );
 // WSS
 const wsServer = new WebSocketServer({ server: http_server, path: "/events", maxPayload: 512 });
 
+const pendingBucketsDecrements: Map<() => void, NodeJS.Timeout> = new Map();
+
 async function leakingBucketOp( client: WebSocket ): Promise<number> 
 {
     const ip = getWsClientIp( client );
     const redis = await getRedisClient();
     const incr = await redis.incr(`${LEAKING_BUCKET_BY_IP_PREFIX}:${ip}`);
-    setTimeout(() => redis.decr(`${LEAKING_BUCKET_BY_IP_PREFIX}:${ip}`), LEAKING_BUCKET_TIME);
+    let timeout: NodeJS.Timeout;
+    function cb() {
+        pendingBucketsDecrements.delete(cb);
+        if( timeout ) clearTimeout( timeout );
+        redis.decr(`${LEAKING_BUCKET_BY_IP_PREFIX}:${ip}`);
+    };
+    timeout = setTimeout(cb, LEAKING_BUCKET_TIME);
+    pendingBucketsDecrements.set(cb, timeout);
     return incr;
 }
 
@@ -96,6 +105,11 @@ const pingInterval = setInterval(
 
 function terminateAll()
 {
+    for( const [cb, timeout] of pendingBucketsDecrements )
+    {
+        clearTimeout( timeout );
+        cb();
+    }
     const clients = wsServer.clients;
     for(const client of clients)
     {
@@ -676,7 +690,7 @@ function unsubAll(client: WebSocket) {
 function terminateClient( client: WebSocket ) 
 {
     unsubAll( client );
-    debug_resetLeakingBucketFor( client );
+    // debug_resetLeakingBucketFor( client );
     client.terminate();
 }
 

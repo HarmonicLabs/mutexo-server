@@ -17,7 +17,7 @@ export async function saveTxOut(
     ref: TxOutRefStr
 ): Promise<void>
 {
-	//--- debug ---
+	//--- test ---
     mkdirSync("./../mutexo-tests-objs", { recursive: true });
 	const jsonString = readFileSync("./../mutexo-tests-objs/mutexoTestPreviewTransactions.json", "utf-8");
 	let parsed;

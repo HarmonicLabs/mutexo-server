@@ -65,23 +65,20 @@ async function leakingBucketOp( client: WebSocket ): Promise<number>
     const ip = getWsClientIp( client );
     const redis = await getRedisClient();
     const incr = await redis.incr(`${LEAKING_BUCKET_BY_IP_PREFIX}:${ip}`);
+
+    logger.debug(">>> ", incr, " <<<\n");
+
     let timeout: NodeJS.Timeout;
-    function cb() {
+    function cb() 
+    {
         pendingBucketsDecrements.delete(cb);
         if( timeout ) clearTimeout( timeout );
         redis.decr(`${LEAKING_BUCKET_BY_IP_PREFIX}:${ip}`);
     };
+
     timeout = setTimeout(cb, LEAKING_BUCKET_TIME);
     pendingBucketsDecrements.set(cb, timeout);
     return incr;
-}
-
-async function debug_resetLeakingBucketFor( client: WebSocket ): Promise<void>
-{ 
-    const ip = getWsClientIp( client );
-    const redis = await getRedisClient();
-
-    redis.del( `${LEAKING_BUCKET_BY_IP_PREFIX}:${ip}` );
 }
 
 const pingInterval = setInterval(
@@ -105,6 +102,8 @@ const pingInterval = setInterval(
 
 function terminateAll()
 {
+    logger.debug("!- TERMINATING ALL THE MUTEXO CLIENTS -!\n");
+        
     for( const [cb, timeout] of pendingBucketsDecrements )
     {
         clearTimeout( timeout );
@@ -223,39 +222,6 @@ app.get("/wsAuth", ipRateLimit, async ( req, res ) => {
 
     res.status(200).send( tokenStr );
 });
-
-// app.get("/utxos", async (req, res) => {
-//     //debug
-//     logger.debug("!- APP IS QUERING THE REQUESTED UTXOS -!\n");
-
-//     res.status(200).send(await queryUtxos(req.body))
-// });
-
-// app.post("/addAddrs", async ( req, res ) => {
-//     //debug
-//     let rndm = Math.floor( Math.random() * 1000 );
-//     logger.debug("!- REDIS FOLLOWING NEW ADDRESSES [", rndm, "] -!\n");
-
-//     const addrs = req.body.addrs;
-
-//     logger.debug("> ADDRESSES: ", addrs, " <\n");
-
-//     if( Array.isArray( addrs ) && addrs[0]?.addr ) 
-//     {
-//         await addAddrs( req.body );
-//         res.status(200).send();
-
-//         //debug
-//         logger.debug("> [", rndm, "] ", addrs.length, " NEW ADDRESSES HAVE BEEN ADDED <\n");
-//     }
-//     else 
-//     {
-//         res.status(400);
-
-//         //debug
-//         logger.debug("!- [", rndm, "] ERROR: INVALID ADDRESSES -!\n");
-//     }
-// });
 
 http_server.listen((3001), () => {    
     logger.debug("!- THE SERVER IS LISTENING ON PORT 3001 -!\n")
@@ -564,50 +530,6 @@ function unsubClientFromOutput(addr: AddressStr, client: WebSocket): void {
     getClientOutputsSubs(client).delete(addr);
 }
 
-// function sendUtxoQueryRequest( addresses: AddressStr[] ): void {
-//     if (addresses.length > 0) {
-//         logger.debug("!- PARENT PORT IS POSTING NEW MESSAGE -!\n");
-
-//         parentPort?.postMessage({
-//             type: "queryAddrsUtxos",
-//             data: addresses
-//         });
-//     }
-// }
-
-// addAddrs([ "addr_test1wrzefj03mkklj352vueeum984wynqpjsvjxd6qeemfdaa5cd5jrfe" ] );
-
-// async function addAddrs(addresses: AddressStr[]): Promise<void> {
-//     const redis = await getRedisClient();
-
-//     let addr: AddressStr;
-//     for (let i = 0; i < addresses.length;) {
-//         addr = addresses[i];
-//         if (!isAddrStr(addr)) {
-//             addresses.splice(i, 1);
-//             continue;
-//         }
-
-//         if (await addressIsFollowed(addr)) {
-//             // don"t query address we are already following
-//             addresses.splice(i, 1);
-//         }
-//         else {
-//             // next loop check next address
-//             i++;
-//             // `isFollowingAddr` evaluating to false will take care of adding the address
-//         }
-
-//         // if the public API key is not following this address (no matter if it exists or not)
-//         if (!await isFollowingAddr(addr)) {
-//             // add the follow
-//             await followAddr(addr);
-//         }
-//     }
-
-//     sendUtxoQueryRequest(addresses);
-// }
-
 async function queryUtxos(refs: TxOutRefStr[]): Promise<(SavedFullTxOut & { ref: TxOutRefStr })[]> {
     const redis = await getRedisClient();
 
@@ -687,10 +609,19 @@ function unsubAll(client: WebSocket) {
     unsubAllLockedAddr(client);
 }
 
-function terminateClient( client: WebSocket ) 
+async function terminateClient( client: WebSocket ) 
 {
+    logger.debug("!- TERMINATING MUTEXO CLIENT -!\n");
+    
     unsubAll( client );
-    // debug_resetLeakingBucketFor( client );
+
+    //-- super duper iper illegal --
+    //(test purposes only)
+    const ip = getWsClientIp( client );
+    const redis = await getRedisClient();
+    redis.del(`${LEAKING_BUCKET_BY_IP_PREFIX}:${ip}`);
+    //------------------------------
+
     client.terminate();
 }
 
@@ -708,8 +639,6 @@ async function handleClientMessage( this: WebSocket, data: RawData ): Promise<vo
     // heartbeat
     ( client as any ).isAlive = true;
     const reqsInLastMinute = await leakingBucketOp( client );
-
-    logger.debug( reqsInLastMinute );
 
     if( reqsInLastMinute > LEAKING_BUCKET_MAX_CAPACITY ) 
     {
@@ -732,20 +661,21 @@ async function handleClientMessage( this: WebSocket, data: RawData ): Promise<vo
     return;
 }
 
+function sendSuccess( client: WebSocket, id: number )
+{
+    const msg = new MessageSubSuccess({ id }).toCbor().toBuffer();
+    client.send( msg );
+}
+function sendFailure( client: WebSocket, id: number, errorType: number )
+{
+    const msg = new MessageSubFailure({ id, errorType }).toCbor().toBuffer();
+    client.send( msg );
+}
+
 async function handleClientSub( client: WebSocket, req: ClientSub ): Promise<void> 
 {        
-    function sendSuccess()
-    {
-        const msg = new MessageSubSuccess({ id }).toCbor().toBuffer();
-        client.send( msg );
-    }
-    function sendFailure( errorType: number )
-    {
-        const msg = new MessageSubFailure({ id, errorType }).toCbor().toBuffer();
-        client.send( msg );
-    }
-    
     const { id, eventType, filters } = req;
+
     logger.debug("!- HANDLING MUTEXO CLIENT SUB MESSAGE [", id, "] -!\n");
 
     for( const filter of filters ) 
@@ -762,122 +692,147 @@ async function handleClientSub( client: WebSocket, req: ClientSub ): Promise<voi
 
             logger.debug("> 3 <\n");
 
-            await isFollowingAddr( addrStr ).then( 
-                async ( isFollowing ) => {
-                    logger.debug("> 4 <\n");
+            const isFollowing = await isFollowingAddr( addrStr );
 
-                    if( !isFollowing ) 
-                    {
-                        logger.debug("> 5 <\n");
+            logger.debug("> 4 <\n");
 
-                        sendFailure(4);
-                        // client.send( addrNotFollowedMsg );
+            if( !isFollowing ) 
+            {
+                logger.debug("> 5 <\n");
 
-                        logger.debug("> 6 <\n");
+                sendFailure(client, id, 4);
+                // client.send( addrNotFollowedMsg );
 
-                        return;
-                    }
+                logger.debug("> 6 <\n");
 
-                    logger.debug("> 7 <\n");
+                return;
+            }
 
-                    switch( evtName ) 
-                    {
-                        case MutexoServerEvent.Lock: {
-                            logger.debug("> 8 <\n");
+            logger.debug("> 7 <\n");
 
-                            subClientToLockedAddr( addrStr, client );
+            switch( evtName ) 
+            {
+                case MutexoServerEvent.Lock: {
+                    logger.debug("> 8 <\n");
 
-                            logger.debug("> 13 <\n");
+                    subClientToLockedAddr( addrStr, client );
 
-                            sendSuccess();
-                            return;
-                        }
-                        case MutexoServerEvent.Free: {
-                            logger.debug("> 9 <\n");
+                    logger.debug("> 13 <\n");
 
-                            subClientToFreeAddr( addrStr, client );
-
-                            logger.debug("> 13 <\n");
-
-                            sendSuccess();
-                            return;
-                        }
-                        case MutexoServerEvent.Input: {
-
-                            logger.debug("> 10 <\n");
-
-                            subClientToSpentAddr( addrStr, client );
-
-                            logger.debug("> 13 <\n");
-
-                            sendSuccess();
-                            return;
-                        }
-                        case MutexoServerEvent.Output: {
-                            logger.debug("> 12 <\n");
-
-                            subClientToOutput( addrStr, client );
-
-                            logger.debug("> 13 <\n");
-
-                            sendSuccess();
-                            return;
-                        }
-                        default: {
-                            sendFailure(6);
-                            // client.send( unknownSubEvtByAddrMsg );
-
-                            logger.debug("> 13 <\n");
-                            return;
-                        }
-                    }
+                    break;
                 }
-            );
+                case MutexoServerEvent.Free: {
+                    logger.debug("> 9 <\n");
+
+                    subClientToFreeAddr( addrStr, client );
+
+                    logger.debug("> 13 <\n");
+
+                    break;
+                }
+                case MutexoServerEvent.Input: {
+
+                    logger.debug("> 10 <\n");
+
+                    subClientToSpentAddr( addrStr, client );
+
+                    logger.debug("> 13 <\n");
+
+                    break;
+                }
+                case MutexoServerEvent.Output: {
+                    logger.debug("> 12 <\n");
+
+                    subClientToOutput( addrStr, client );
+
+                    logger.debug("> 13 <\n");
+
+                    break;
+                }
+                default: {
+                    logger.debug("> 13.0 <\n");
+                                        
+                    sendFailure(client, id, 6);
+                    // client.send( unknownSubEvtByAddrMsg );
+
+                    logger.debug("> 13.1 <\n");
+                    return;
+                }
+            }
         }
         else if( filter instanceof UtxoFilter ) 
         {
             const ref = filter.utxoRef.toString();
 
-            getRedisClient().then(
-                async ( redis ) => {
-                    const addr = await redis.hGet(`${UTXO_PREFIX}:${ref}`, "addr") as AddressStr | undefined;
-                    if( !addr || !await isFollowingAddr( addr ) ) 
-                    {
-                        sendFailure(5);
-                        // client.send( utxoNotFoundMsg );
+            logger.debug("> 101 <\n");
 
-                        return;
-                    }
+            const redis = await getRedisClient();
 
-                    switch( evtName ) 
-                    {
-                        case MutexoServerEvent.Lock:
-                            subClientToLockedUTxO(ref, client);
-                            break;
-                        case MutexoServerEvent.Free:
-                            subClientToFreeUTxO(ref, client);
-                            break;
-                        case MutexoServerEvent.Input:
-                            subClientToSpentUTxO(ref, client);
-                            break;
-                        case MutexoServerEvent.Output:
-                        default:
-                            sendFailure(7);    
-                            // client.send( unknownSubEvtByUTxORefMsg );
+            logger.debug("> 102 <\n");
 
-                            return;
-                    }
-                }
-            );
+            const addr = await redis.hGet(`${UTXO_PREFIX}:${ref}`, "addr") as AddressStr | undefined;
+            
+            logger.debug("> 103 <\n");
+                                
+            if( !addr || !await isFollowingAddr( addr ) ) 
+            {
+                logger.debug("> 104 <\n");
+
+                sendFailure(client, id, 5);
+                // client.send( utxoNotFoundMsg );
+                return;
+            }
+
+            logger.debug("> 105 <\n");
+
+            switch( evtName ) 
+            {
+                case MutexoServerEvent.Lock:
+                    logger.debug("> 106 <\n");
+
+                    subClientToLockedUTxO(ref, client);
+
+                    logger.debug("> 107 <\n");
+
+                    break;
+                case MutexoServerEvent.Free:
+                    logger.debug("> 108 <\n");
+
+                    subClientToFreeUTxO(ref, client);
+
+                    logger.debug("> 109 <\n");
+
+                    break;
+                case MutexoServerEvent.Input:
+                    logger.debug("> 110 <\n");
+
+                    subClientToSpentUTxO(ref, client);
+
+                    logger.debug("> 111 <\n");
+
+                    break;
+                case MutexoServerEvent.Output:
+                    logger.debug("> 112 <\n");
+                default:
+                    logger.debug("> 113 <\n");
+
+                    sendFailure(client, id, 7);    
+                    // client.send( unknownSubEvtByUTxORefMsg );
+
+                    logger.debug("> 114 <\n");
+
+                    return;
+            }
         }
         else
         {
             logger.debug("> 15 <");
 
-            sendFailure(11);
+            sendFailure(client, id, 11);
             // client.send( unknownSubFilter );
 
             logger.debug("> 13 <");
+
             return;
         }
 
@@ -885,59 +840,174 @@ async function handleClientSub( client: WebSocket, req: ClientSub ): Promise<voi
     }
 
     logger.debug("!- [", id, "] MUTEXO CLIENT SUB REQUEST HANDLED -!\n");
+
+    sendSuccess(client, id);
+    return;
 }
 
-async function handleClientUnsub(client: WebSocket, req: ClientUnsub): Promise<void> {
+async function handleClientUnsub(client: WebSocket, req: ClientUnsub): Promise<void> 
+{
     const { id, eventType, filters } = req;
 
-    filters.forEach((filter) => {
+    logger.debug("!- HANDLING MUTEXO CLIENT UNSUB MESSAGE [", id, "] -!\n");
+
+    for( const filter of filters )
+    {
         const evtName = eventIndexToMutexoEventName(eventType);
 
-        if (filter instanceof AddrFilter) {
+        logger.debug("> 201 <\n");
+
+        if( filter instanceof AddrFilter ) 
+        {
+            logger.debug("> 202 <\n");
+
             const addrStr = filter.addr.toString();
 
-            switch (evtName) {
+            logger.debug("> 203 <\n");
+
+            const isFollowing = await isFollowingAddr( addrStr );
+
+            logger.debug("> 204 <\n");
+
+            if( !isFollowing ) 
+            {
+                logger.debug("> 205 <\n");
+
+                sendFailure(client, id, 4);
+                // client.send( addrNotFollowedMsg );
+
+                logger.debug("> 206 <\n");
+
+                return;
+            }
+
+            logger.debug("> 207 <\n");
+
+            switch( evtName ) 
+            {
                 case MutexoServerEvent.Free:
-                    unsubClientFromLockedAddr(addrStr, client);
+                    logger.debug("> 208 <\n");
+
+                    unsubClientFromLockedAddr( addrStr, client );
+
+                    logger.debug("> 213 <\n");
+
                     break;
                 case MutexoServerEvent.Lock:
-                    unsubClientFromFreeAddr(addrStr, client);
+                    logger.debug("> 209 <\n");
+
+                    unsubClientFromFreeAddr( addrStr, client );
                     break;
                 case MutexoServerEvent.Input:
-                    unsubClientFromSpentAddr(addrStr, client);
+                    logger.debug("> 210 <\n");
+
+                    unsubClientFromSpentAddr( addrStr, client );
+
+                    logger.debug("> 213 <\n");
+
                     break;
                 case MutexoServerEvent.Output:
-                    unsubClientFromOutput(addrStr, client);
+                    logger.debug("> 211 <\n");
+
+                    unsubClientFromOutput( addrStr, client );
+
+                    logger.debug("> 213 <\n");
+
                     break;
                 default:
-                    client.send(unknownUnsubEvtByAddrMsg);
+                    logger.debug("> 212 <\n");
+
+                    sendFailure(client, id, 8);
+                    //client.send(unknownUnsubEvtByAddrMsg);
+
+                    logger.debug("> 213 <\n");
+
                     return;
-                    break;
             }
         }
-        else if (filter instanceof UtxoFilter) {
+        else if( filter instanceof UtxoFilter ) 
+        {
             const ref = filter.utxoRef.toString();
 
-            switch (evtName) {
+            logger.debug("> 301 <\n");
+
+            const redis = await getRedisClient();
+
+            logger.debug("> 302 <\n");
+
+            const addr = await redis.hGet(`${UTXO_PREFIX}:${ref}`, "addr") as AddressStr | undefined;
+            
+            logger.debug("> 303 <\n");
+                                
+            if( !addr || !await isFollowingAddr( addr ) ) 
+            {
+                logger.debug("> 304 <\n");
+
+                sendFailure(client, id, 5);
+                // client.send( utxoNotFoundMsg );
+                return;
+            }
+
+            logger.debug("> 305 <\n");
+
+            switch( evtName ) 
+            {
                 case MutexoServerEvent.Lock:
+                    logger.debug("> 306 <\n");
+
                     unsubClientFromLockedUTxO(ref, client);
+
+                    logger.debug("> 307 <\n");
+
                     break;
                 case MutexoServerEvent.Free:
+                    logger.debug("> 308 <\n");
+
                     unsubClientFromFreeUTxO(ref, client);
+
+                    logger.debug("> 309 <\n");
+
                     break;
                 case MutexoServerEvent.Input:
+                    logger.debug("> 310 <\n");
+
                     unsubClientFromSpentUTxO(ref, client);
+
+                    logger.debug("> 311 <\n");
+
                     break;
                 case MutexoServerEvent.Output:
-                    // ?????
-                    break;
+                    logger.debug("> 312 <\n");
                 default:
-                    client.send(unknownUnsubEvtByUTxORefMsg);
+                    logger.debug("> 313 <\n");
+
+                    sendFailure(client, id, 7);    
+                    // client.send( unknownSubEvtByUTxORefMsg );
+
+                    logger.debug("> 314 <\n");
+
                     return;
-                    break;
             }
         }
-    });
+        else
+        {
+            logger.debug("> 315 <");
+
+            sendFailure(client, id, 11);
+            // client.send( unknownSubFilter );
+
+            logger.debug("> 313 <");
+
+            return;
+        }
+
+        logger.debug("> 14 <\n");
+    }
+
+    logger.debug("!- [", id, "] MUTEXO CLIENT UNSUB REQUEST HANDLED -!\n");
+
+    sendSuccess(client, id);
+    return;
 }
 
 async function handleClientReqFree(client: WebSocket, req: ClientReqFree): Promise<void> {

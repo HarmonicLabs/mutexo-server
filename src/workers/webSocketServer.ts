@@ -845,7 +845,7 @@ async function handleClientSub( client: WebSocket, req: ClientSub ): Promise<voi
     return;
 }
 
-async function handleClientUnsub(client: WebSocket, req: ClientUnsub): Promise<void> 
+async function handleClientUnsub( client: WebSocket, req: ClientUnsub ): Promise<void> 
 {
     const { id, eventType, filters } = req;
 
@@ -1010,69 +1010,66 @@ async function handleClientUnsub(client: WebSocket, req: ClientUnsub): Promise<v
     return;
 }
 
-async function handleClientReqFree(client: WebSocket, req: ClientReqFree): Promise<void> {
-    const { id, utxoRefs } = req;
-
-    const freed = utxoRefs.map(forceTxOutRefStr).filter((utxoRef) => (unlockUTxO(client, utxoRef)));
-
-    if (freed.length === 0) {
-        const msg = new MessageMutexFailure({
-            id,
-            failureData: {
-                failureType: 0,
-                utxoRefs: freed.map((ref) => (forceTxOutRef(ref)))
-            }
-        }).toCbor().toBuffer();
-
-        client.send(msg);
-        return;
-    }
-    else {
-        const msg = new MessageMutexSuccess({
-            id,
-            successData: {
-                successType: 0,
-                utxoRefs: freed.map((ref) => (forceTxOutRef(ref)))
-            }
-        }).toCbor().toBuffer();
-
-        client.send(msg);
-        emitUtxoFreeEvts(freed);
-        return;
-    }
-}
-
-async function handleClientReqLock(client: WebSocket, req: ClientReqLock): Promise<void> {
+async function handleClientReqLock( client: WebSocket, req: ClientReqLock ): Promise<void> 
+{
     const { id, utxoRefs, required } = req;
 
-    const lockable = utxoRefs.map(forceTxOutRefStr).filter((utxoRef) => (unlockUTxO(client, utxoRef)));
+    logger.debug("!- HANDLING MUTEXO CLIENT LOCK MESSAGE [", id, "] -!\n");
 
-    if (lockable.length < required) {
+    const lockable = utxoRefs.map( forceTxOutRefStr )
+        .filter(( utxoRef ) => ( !isBlockingUTxO( client, utxoRef ) ));
+    //     .filter(( utxoRef ) => ( unlockUTxO( client, utxoRef ) ));
+
+    logger.debug("> 401 <\n");
+    
+    if( lockable.length < required )
+    {
+        logger.debug("> 402 <\n");
+                
         const msg = new MessageMutexFailure({
             id,
             failureData: {
                 failureType: 1,
-                utxoRefs: lockable.map((ref) => (forceTxOutRef(ref)))
+                utxoRefs: lockable.map(( ref ) => ( forceTxOutRef(ref) ))
             }
         }).toCbor().toBuffer();
 
-        client.send(msg);
+        logger.debug("> 403 <\n");
+
+        client.send( msg );
+
+        logger.debug("!- [", id, "] MUTEXO CLIENT LOCK REQUEST HANDLED -!\n");
+
         return;
     }
-    else {
+    else 
+    {
+        logger.debug("> 405 <\n");
+
         lockable.length = required; // drop any extra
-        lockable.forEach((ref) => (void lockUTxO(client, ref)));
+        lockable.forEach(( ref ) => ( void lockUTxO( client, ref ) ));
+
+        logger.debug("> 406 <\n");
 
         const msg = new MessageMutexSuccess({
             id,
             successData: {
-                successType: 0,
-                utxoRefs: lockable.map((ref) => (forceTxOutRef(ref)))
+                successType: 1,
+                utxoRefs: lockable.map(( ref ) => ( forceTxOutRef( ref ) ))
             }
         }).toCbor().toBuffer();
 
-        client.send(msg);
-        emitUtxoLockEvts(lockable);
+        logger.debug("> 407 <\n");
+
+
+        client.send( msg );
+
+        logger.debug("> 408 <\n");
+
+        emitUtxoLockEvts( lockable );
+
+        logger.debug("!- [", id, "] MUTEXO CLIENT LOCK REQUEST HANDLED -!\n");
+
         return;
     }
 }
@@ -1104,6 +1101,68 @@ async function emitUtxoLockEvts(refs: TxOutRefStr[]): Promise<void> {
             ?.forEach(client => {
                 client.send(msg)
             });
+    }
+}
+
+async function handleClientReqFree( client: WebSocket, req: ClientReqFree ): Promise<void> 
+{
+    const { id, utxoRefs } = req;
+
+    logger.debug("!- HANDLING MUTEXO CLIENT FREE MESSAGE [", id, "] -!\n");
+
+    const freed = utxoRefs.map( forceTxOutRefStr )
+        .filter(( utxoRef ) => ( !isBlockingUTxO( client, utxoRef ) ));
+        // .filter(( utxoRef ) => ( !unlockUTxO( client, utxoRef ) ));
+
+    logger.debug("> 501 <\n");
+
+    if( freed.length === 0 ) 
+    {
+        logger.debug("> 502 <\n");
+        
+        const msg = new MessageMutexFailure({
+            id,
+            failureData: {
+                failureType: 0,
+                utxoRefs: freed.map(( ref ) => ( forceTxOutRef( ref ) ))
+            }
+        }).toCbor().toBuffer();
+
+        logger.debug("> 503 <\n");
+
+        client.send( msg );
+
+        logger.debug("!- [", id, "] MUTEXO CLIENT FREE REQUEST HANDLED -!\n");
+
+        return;
+    }
+    else 
+    {
+        logger.debug("> 504 <\n");
+
+        freed.forEach(( ref ) => ( void unlockUTxO( client, ref ) ));
+
+        logger.debug("> 505 <\n");
+
+        const msg = new MessageMutexSuccess({
+            id,
+            successData: {
+                successType: 0,
+                utxoRefs: freed.map(( ref ) => ( forceTxOutRef( ref ) ))
+            }
+        }).toCbor().toBuffer();
+
+        logger.debug("> 506 <\n");
+
+        client.send( msg );
+
+        logger.debug("> 507 <\n");
+
+        emitUtxoFreeEvts( freed );
+
+        logger.debug("!- [", id, "] MUTEXO CLIENT FREE REQUEST HANDLED -!\n");
+
+        return;
     }
 }
 

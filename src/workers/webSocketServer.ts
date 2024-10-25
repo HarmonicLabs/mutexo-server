@@ -1034,7 +1034,7 @@ async function handleClientReqLock( client: WebSocket, req: ClientReqLock ): Pro
             }
         }).toCbor().toBuffer();
 
-        logger.debug("> 403 <\n");
+        logger.debug("--> ", toHex( msg ), " <--\n");
 
         client.send( msg );
 
@@ -1059,8 +1059,7 @@ async function handleClientReqLock( client: WebSocket, req: ClientReqLock ): Pro
             }
         }).toCbor().toBuffer();
 
-        logger.debug("> 407 <\n");
-
+        logger.debug("--> ", toHex( msg ), " <--\n");
 
         client.send( msg );
 
@@ -1111,8 +1110,8 @@ async function handleClientReqFree( client: WebSocket, req: ClientReqFree ): Pro
     logger.debug("!- HANDLING MUTEXO CLIENT FREE MESSAGE [", id, "] -!\n");
 
     const freed = utxoRefs.map( forceTxOutRefStr )
-        .filter(( utxoRef ) => ( !isBlockingUTxO( client, utxoRef ) ));
-        // .filter(( utxoRef ) => ( !unlockUTxO( client, utxoRef ) ));
+        .filter(( utxoRef ) => ( isBlockingUTxO( client, utxoRef ) ));
+        // .filter(( utxoRef ) => ( unlockUTxO( client, utxoRef ) ));
 
     logger.debug("> 501 <\n");
 
@@ -1128,7 +1127,8 @@ async function handleClientReqFree( client: WebSocket, req: ClientReqFree ): Pro
             }
         }).toCbor().toBuffer();
 
-        logger.debug("> 503 <\n");
+        // logger.debug("> 503 <\n");
+        logger.debug("--> ", toHex( msg ), " <--\n");
 
         client.send( msg );
 
@@ -1152,7 +1152,7 @@ async function handleClientReqFree( client: WebSocket, req: ClientReqFree ): Pro
             }
         }).toCbor().toBuffer();
 
-        logger.debug("> 506 <\n");
+        logger.debug("--> ", toHex( msg ), " <--\n");
 
         client.send( msg );
 

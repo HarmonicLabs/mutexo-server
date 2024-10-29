@@ -13,15 +13,16 @@ import { isAddrStr } from "./utils/isAddrStr";
 import { Worker } from "node:worker_threads";
 import { connect } from "net";
 
-//debug
-let nearlyStartedUp: boolean = true;
-
 const webSocketServer = new Worker(__dirname + "/workers/webSocketServer.js");
 const blockParser = new Worker(__dirname + "/workers/blockParser.js");
 
+// test
+const testTxGen = new Worker(__dirname + "/workers/testWorkers/testTxGen.js");
+
 process.on("beforeExit", () => {
-	//debug
+	// debug
 	console.log("!- THREADS MANAGER EXITING -!");
+    testTxGen.terminate();
 
     webSocketServer.terminate();
     blockParser.terminate();
@@ -30,7 +31,7 @@ process.on("beforeExit", () => {
 // block parser only notifies that it finished parsing a block
 // all new data is in redis
 blockParser.on("message", ( blockInfos ) => {
-	//debug
+	// debug
 	console.log("!- BLOCK PARSER THREAD RECEIVED A MESSAGE -!\n");
 
     webSocketServer.postMessage({
@@ -40,7 +41,7 @@ blockParser.on("message", ( blockInfos ) => {
 });
 
 blockParser.on("error", ( err ) => {
-	//debug
+	// debug
 	console.log("!- BLOCK PARSER THREAD ERRORED: -!\n", err, "\n");
 
     mkdirSync("./logs", { recursive: true });
@@ -58,7 +59,7 @@ void async function main()
     const lsqClient = new LocalStateQueryClient( mplexer );
 
     process.on("beforeExit", () => {
-		//debug
+		// debug
 		console.log("!- WSS MAIN PROCESS IS ENDING -!\n");
         
 		lsqClient.done();
@@ -69,7 +70,7 @@ void async function main()
     let tip = await syncAndAcquire( chainSyncClient, lsqClient );
 
     webSocketServer.on("message", async ( msg ) => {
-		//debug
+		// debug
 		console.log("!- WSS RECEIVED A MESSAGE: -!\n", msg, "\n");
 
         if( !isObject( msg ) ) return;
@@ -93,7 +94,7 @@ void async function main()
     })
 
     chainSyncClient.on("rollForward", rollForward => {
-		//debug
+		// debug
 		console.log("!- WSS'CHAIN SYNC CLIENT IS ROLLING FORWARD -!\n");
 
         const blockData: Uint8Array = rollForward.cborBytes ?
@@ -106,19 +107,14 @@ void async function main()
     });
 
     chainSyncClient.on("rollBackwards", rollBack => {
-		//debug
+		// debug
 		console.log("!- WSS'CHAIN SYNC CLIENT IS ROLLING BACKWARDS -!\n");
 	
         if( !rollBack.point.blockHeader ) return;
         
         tip = rollBack.tip.point;
-
         const hashStr = toHex( rollBack.point.blockHeader.hash );
-        
-        revertBlocksUntilHash( hashStr )
-        .then( revertedBlocks => {
-
-        });
+        revertBlocksUntilHash( hashStr ).then( revertedBlocks => {});
     });
 
     while( true )

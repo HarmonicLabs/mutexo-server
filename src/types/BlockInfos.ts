@@ -2,7 +2,6 @@ import { TxOutRefStr } from "@harmoniclabs/cardano-ledger-ts";
 import { isTxOutRefStr } from "../utils/isTxOutRefStr";
 import { RedisJSONObject } from "./UTxOWithStatus";
 import { isObject } from "@harmoniclabs/obj-utils";
-import { strIsInt } from "../utils/strIsInt";
 import { isHex } from "../utils/isHex";
 
 export interface TxIO extends RedisJSONObject {
@@ -35,15 +34,15 @@ export function tryGetBlockInfos( stuff: any ): BlockInfos | undefined
 {
     if(!(
         isObject( stuff ) &&
-        typeof stuff.slot === "string" && //??????
-        strIsInt( stuff.slot ) &&
+        typeof stuff.slot === "number" &&
+        // strIsInt( stuff.slot ) &&
         isHex( stuff.prev ) &&
         Array.isArray( stuff.txs ) &&
         (stuff.txs as any[]).every( isTxIO )
     )) return undefined;
 
     return {
-        slot: parseInt( stuff.slot ),
+        slot: Number( stuff.slot ),
         prev: stuff.prev,
         txs: stuff.txs
     };

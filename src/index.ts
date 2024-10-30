@@ -16,13 +16,9 @@ import { connect } from "net";
 const webSocketServer = new Worker(__dirname + "/workers/webSocketServer.js");
 const blockParser = new Worker(__dirname + "/workers/blockParser.js");
 
-// test
-const testTxGen = new Worker(__dirname + "/workers/testWorkers/testTxGen.js");
-
 process.on("beforeExit", () => {
 	// debug
 	console.log("!- THREADS MANAGER EXITING -!");
-    testTxGen.terminate();
 
     webSocketServer.terminate();
     blockParser.terminate();

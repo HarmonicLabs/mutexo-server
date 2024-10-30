@@ -22,6 +22,7 @@ import { sign, verify } from "jsonwebtoken";
 import { webcrypto } from "node:crypto";
 import { URL } from "node:url";
 import express from "express";
+import dotenv from "dotenv";
 import http from "http";
 
 // close message
@@ -43,6 +44,7 @@ const unknownUnsubEvtMsg = new MessageError({ errorType: 10 }).toCbor().toBuffer
 
 // -- STARTUP --
 
+dotenv.config();
 const logger = new Logger({ logLevel: LogLevel.DEBUG });
 
 logger.debug("!- WSS CONNECTION OPENING -!\n");
@@ -132,7 +134,7 @@ wsServer.on("connection", async ( client, req ) => {
         return;
     }
 
-    const url = new URL(req.url ?? "", "ws:// " + req.headers.host + "/");
+    const url = new URL(req.url ?? "", "ws://" + req.headers.host + "/");
     const token = url.searchParams.get("token");
 
     if( !token ) 
@@ -234,19 +236,36 @@ parentPort?.on("message", async ( msg ) => {
     if( !isObject( msg ) ) return;
     if( msg.type === "Block" ) 
     {
+        logger.debug("> 601 <\n");
+
         const blockInfos = tryGetBlockInfos( msg.data );
+
+        logger.debug("> ", blockInfos ," <\n");
+
         if( !blockInfos ) return;
+
+        logger.debug("> 602 <\n");
+
         const redis = await getRedisClient();
         const txs = blockInfos.txs;
 
         for( const { ins, outs } of txs ) 
         {
+            logger.debug("> 603 <\n");
+
             const txHash = outs[0].split("#")[0];
             await Promise.all([
                 Promise.all(
                     ins.map( async inp => {
+                        logger.debug("> 604 <\n");
+                                                
                         const addr = await redis.hGet(`${UTXO_PREFIX}:${inp}`, "addr") as AddressStr | undefined;
+                        
+                        logger.debug("> ", addr ," <\n");
+                        
                         if( !addr ) return;
+
+                        logger.debug("> 605 <\n");
 
                         const msg = new MessageInput({
                             utxoRef: forceTxOutRef( inp ),
@@ -254,19 +273,37 @@ parentPort?.on("message", async ( msg ) => {
                             txHash: stringToUint8Array( txHash )
                         }).toCbor().toBuffer();
 
+                        logger.debug("> ", msg, " <\n");
+
+                        logger.debug("> spentUTxOClients(input): ", spentUTxOClients.get( inp ) ," <\n");                        logger.debug("> spentUTxOClients(input): ", spentUTxOClients.get( inp ) ," <");
+                        logger.debug("> spentAddrClients(addr): ", spentAddrClients.get( addr ) ," <\n");
+
                         spentUTxOClients.get( inp )?.forEach(( client ) => client.send( msg ));
                         spentAddrClients.get( addr )?.forEach(( client ) => client.send( msg ));
+
+                        logger.debug("> 606 <\n");
                     })
                 ),
                 Promise.all(
                     outs.map( async out => {
+                        logger.debug("> 604 <\n");
+
                         const addr = await redis.hGet(`${UTXO_PREFIX}:${out}`, "addr") as AddressStr | undefined;
+                        
+                        logger.debug("> ", addr ," <\n");
+                                                
                         if( !addr ) return;
+
+                        logger.debug("> 605 <\n");
 
                         const msg = new MessageOutput({
                             utxoRef: forceTxOutRef( out ),
                             addr: Address.fromString( addr )
                         }).toCbor().toBuffer();
+
+                        logger.debug("> ", msg, " <\n");
+
+                        logger.debug("> outputClients(addr): ", outputClients.get( addr ) ," <\n");
 
                         outputClients.get( addr )?.forEach(( client ) => client.send( msg ));
                     })

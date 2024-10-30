@@ -7,10 +7,12 @@ import { getRedisClient } from "../redis/getRedisClient";
 import { ValueJson } from "../types/UTxOWithStatus";
 import { isAddrStr } from "../utils/isAddrStr";
 import { isHex } from "../utils/isHex";
+import dotenv from "dotenv";
 
-//debug
+// debug
 let nearlyStartedUp: boolean = true;
-let toBeFollowedTestAddrs: number = 1;
+let toBeFollowedTestAddrs: number = 2;
+dotenv.config();
 
 export async function saveTxOut(
     out: TxOut, 
@@ -18,46 +20,50 @@ export async function saveTxOut(
 ): Promise<void>
 {
 	//--- test ---
-    mkdirSync("./../mutexo-tests-objs", { recursive: true });
-	const jsonString = readFileSync("./../mutexo-tests-objs/mutexoTestPreviewTransactions.json", "utf-8");
-	let parsed;
-
-	try
-	{
-		parsed = JSON.parse( jsonString );
-	}
-	catch
-	{
-		parsed = [];
-	}
-	
-    if( nearlyStartedUp ) 
-	{
-        nearlyStartedUp = false;
-		parsed = [];
-    }
-
 	let newAddr = out.address.toString() as AddressStr;
-	let newUtxoRef = {
-		id: ref.split("#")[0],
-		index: parseInt(ref.split("#")[1])
-	} as ITxOutRef;
 
-	if( toBeFollowedTestAddrs-- > 0 )
-	{
-		await followTestAddrs( [ newAddr ] );
-	}
-	
-	parsed.push({
-		addr: newAddr,
-		utxoRef: newUtxoRef
-	});
+    if( newAddr === process.env.FIRST_ADDRESS! || newAddr === process.env.SECOND_ADDRESS! )
+    {
+        mkdirSync("./../mutexo-tests-objs", { recursive: true });
+        const jsonString = readFileSync("./../mutexo-tests-objs/mutexoTestPreviewTransactions.json", "utf-8");
+        let parsed;
 
-	writeFileSync(
-		"./../mutexo-tests-objs/mutexoTestPreviewTransactions.json", 
-		JSON.stringify( parsed, null, 2 )
-	);
-	//-----------
+        try
+        {
+            parsed = JSON.parse( jsonString );
+        }
+        catch
+        {
+            parsed = [];
+        }
+        
+        if( nearlyStartedUp ) 
+        {
+            nearlyStartedUp = false;
+            parsed = [];
+        }
+
+        let newUtxoRef = {
+            id: ref.split("#")[0],
+            index: parseInt(ref.split("#")[1])
+        } as ITxOutRef;
+
+        if( toBeFollowedTestAddrs-- > 0 )
+        {
+            await followTestAddrs( [ newAddr ] );
+        }
+        
+        parsed.push({
+            addr: newAddr,
+            utxoRef: newUtxoRef
+        });
+
+        writeFileSync(
+            "./../mutexo-tests-objs/mutexoTestPreviewTransactions.json", 
+            JSON.stringify( parsed, null, 2 )
+        );
+    }
+    //------------------------
 
     const redis = await getRedisClient();
     await Promise.all([

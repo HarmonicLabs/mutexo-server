@@ -35,7 +35,7 @@ export function tryGetBlockInfos( stuff: any ): BlockInfos | undefined
 {
     if(!(
         isObject( stuff ) &&
-        typeof stuff.slot === "string" &&
+        typeof stuff.slot === "string" && //??????
         strIsInt( stuff.slot ) &&
         isHex( stuff.prev ) &&
         Array.isArray( stuff.txs ) &&

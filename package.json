@@ -9,7 +9,7 @@
     },
     "dependencies": {
         "@harmoniclabs/blockfrost-pluts": "^0.1.14",
-        "@harmoniclabs/cardano-ledger-ts": "^0.2.6",
+        "@harmoniclabs/cardano-ledger-ts": "^0.2.7",
         "@harmoniclabs/cbor": "^1.1.4",
         "@harmoniclabs/mutexo-messages": "^0.0.12",
         "@harmoniclabs/obj-utils": "^1.0.0",

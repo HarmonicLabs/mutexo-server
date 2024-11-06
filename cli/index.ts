@@ -11,8 +11,6 @@ program
 program
     .command("start")
     .description("starts the WSS")
-    // .argument("<number>", "number of test addresses to follow")
-    // .option("-t, --test <number>", "number of test addresses to follow", "1")
     .action(() => {
         execSync("node ./dist/src/index.js", { stdio: "inherit" }) 
     });

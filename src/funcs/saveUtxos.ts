@@ -1,7 +1,7 @@
 import { AddressStr, Hash32, ITxOutRef, TxOut, TxOutRefStr, UTxO } from "@harmoniclabs/cardano-ledger-ts";
+import { existsSync, mkdir, readFileSync, writeFileSync } from "fs";
 import { dataToCbor, isData } from "@harmoniclabs/plutus-data";
 import { UTXO_VALUE_PREFIX, UTXO_PREFIX } from "../constants";
-import { mkdirSync, readFileSync, writeFileSync } from "fs";
 import { followTestAddrs } from "../redis/isFollowingAddr";
 import { getRedisClient } from "../redis/getRedisClient";
 import { ValueJson } from "../types/UTxOWithStatus";
@@ -9,10 +9,11 @@ import { isAddrStr } from "../utils/isAddrStr";
 import { isHex } from "../utils/isHex";
 import dotenv from "dotenv";
 
-// debug
+// ------- debug -------
 let nearlyStartedUp: boolean = true;
 let toBeFollowedTestAddrs: number = 2;
 dotenv.config();
+// ---------------------
 
 export async function saveTxOut(
     out: TxOut, 
@@ -21,26 +22,28 @@ export async function saveTxOut(
 {
 	//--- test ---
 	let newAddr = out.address.toString() as AddressStr;
-
+    
     if( newAddr === process.env.FIRST_ADDRESS! || newAddr === process.env.SECOND_ADDRESS! )
     {
-        mkdirSync("./../mutexo-tests-objs", { recursive: true });
-        const jsonString = readFileSync("./../mutexo-tests-objs/mutexoTestPreviewTransactions.json", "utf-8");
+        const dirPath = './../test-txs';
+        const filePath ='./../test-txs/test-txs.json';
+
+        if( !existsSync( dirPath ) ) 
+        {
+            await mkdir( dirPath, { recursive: true }, ( err ) => { console.log( err ) });
+        }
+
         let parsed;
 
-        try
-        {
-            parsed = JSON.parse( jsonString );
-        }
-        catch
-        {
-            parsed = [];
-        }
-        
-        if( nearlyStartedUp ) 
+        if( nearlyStartedUp || !existsSync( filePath ) ) 
         {
             nearlyStartedUp = false;
             parsed = [];
+        }
+        else
+        {
+            const jsonString = readFileSync( filePath, "utf-8" );
+            parsed = JSON.parse( jsonString );
         }
 
         let newUtxoRef = {
@@ -58,10 +61,7 @@ export async function saveTxOut(
             utxoRef: newUtxoRef
         });
 
-        writeFileSync(
-            "./../mutexo-tests-objs/mutexoTestPreviewTransactions.json", 
-            JSON.stringify( parsed, null, 2 )
-        );
+        writeFileSync( filePath, JSON.stringify( parsed, null, 2 ) );
     }
     //------------------------
 

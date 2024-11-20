@@ -22,7 +22,6 @@ import { sign, verify } from "jsonwebtoken";
 import { webcrypto } from "node:crypto";
 import { URL } from "node:url";
 import express from "express";
-import dotenv from "dotenv";
 import http from "http";
 
 // close message
@@ -44,7 +43,6 @@ const unknownUnsubEvtMsg = new MessageError({ errorType: 10 }).toCbor().toBuffer
 
 // -- STARTUP --
 
-dotenv.config();
 const logger = new Logger({ logLevel: LogLevel.DEBUG });
 
 logger.debug("!- WSS CONNECTION OPENING -!\n");

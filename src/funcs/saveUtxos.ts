@@ -7,26 +7,40 @@ import { getRedisClient } from "../redis/getRedisClient";
 import { ValueJson } from "../types/UTxOWithStatus";
 import { isAddrStr } from "../utils/isAddrStr";
 import { isHex } from "../utils/isHex";
+
+// ----- mutexo-tests support code -----
 import dotenv from "dotenv";
 
-// ------- debug -------
 let nearlyStartedUp: boolean = true;
-let toBeFollowedTestAddrs: number = 2;
-dotenv.config();
-// ---------------------
+const isTest: boolean = process.argv[3] === "true" || process.argv[3] === "undefined";
+let toBeFollowedTestAddrs: number = process.argv[4] === "undefined" ? 2 : parseInt( process.argv[4] );
+
+process.argv[2] !== "undefined" ? dotenv.config({ path: process.argv[2] }) : dotenv.config();
+
+const envAddrsString: string = process.env.ADDRESSES || '';
+const addressKeys = envAddrsString.split(',');
+const testAddrs = addressKeys.map(( key ) => {
+    const address = process.env[ key ];
+
+    if( !address ) throw new Error(`Missing value for key: ${key}`);
+    
+    return { key, address };
+});
+// -------------------------------------
 
 export async function saveTxOut(
     out: TxOut, 
     ref: TxOutRefStr
 ): Promise<void>
 {
-	//--- test ---
-	let newAddr = out.address.toString() as AddressStr;
-    
-    if( newAddr === process.env.FIRST_ADDRESS! || newAddr === process.env.SECOND_ADDRESS! )
-    {
+	// --- mutexo-tests support code ---
+    // it writes down txs caused by addresses listed into the .env file
+    if( isTest && testAddrs.some(( testAddr ) => ( testAddr.address === out.address.toString() )) )
+    {    
         const dirPath = './../test-txs';
         const filePath ='./../test-txs/test-txs.json';
+
+        let newAddr = out.address.toString();
 
         if( !existsSync( dirPath ) ) 
         {
@@ -63,7 +77,7 @@ export async function saveTxOut(
 
         writeFileSync( filePath, JSON.stringify( parsed, null, 2 ) );
     }
-    //------------------------
+    // ------------------------
 
     const redis = await getRedisClient();
     await Promise.all([

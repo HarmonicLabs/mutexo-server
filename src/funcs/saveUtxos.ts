@@ -15,17 +15,30 @@ let nearlyStartedUp: boolean = true;
 const isTest: boolean = process.argv[3] === "true" || process.argv[3] === "undefined";
 let toBeFollowedTestAddrs: number = process.argv[4] === "undefined" ? 2 : parseInt( process.argv[4] );
 
-process.argv[2] !== "undefined" ? dotenv.config({ path: process.argv[2] }) : dotenv.config();
+try{
+    process.argv[2] !== "undefined" ? dotenv.config({ path: process.argv[2] }) : dotenv.config();
+}
+catch( err )
+{
+    throw new Error(`Error loading .env file (wrong path specified): ${err}`);
+}
 
-const envAddrsString: string = process.env.ADDRESSES || '';
-const addressKeys = envAddrsString.split(',');
-const testAddrs = addressKeys.map(( key ) => {
-    const address = process.env[ key ];
+let envAddrsString: string;
+let addressKeys: string[];
+let testAddrs: { key: string, address: string }[];
 
-    if( !address ) throw new Error(`Missing value for key: ${key}`);
-    
-    return { key, address };
-});
+if( isTest )
+{
+    envAddrsString = process.env.ADDRESSES || '';
+    addressKeys = envAddrsString === '' ? [] : envAddrsString.split(',');
+    testAddrs = addressKeys.length === 0 ? [] : addressKeys.map(( key ) => {
+        const address = process.env[ key ];
+
+        if( !address ) throw new Error(`Missing value for key: ${key}`);
+        
+        return { key, address };
+    });
+}
 // -------------------------------------
 
 export async function saveTxOut(
@@ -37,8 +50,8 @@ export async function saveTxOut(
     // it writes down txs caused by addresses listed into the .env file
     if( isTest && testAddrs.some(( testAddr ) => ( testAddr.address === out.address.toString() )) )
     {    
-        const dirPath = './../test-txs';
-        const filePath ='./../test-txs/test-txs.json';
+        const dirPath: string = './../test-txs';
+        const filePath: string ='./../test-txs/test-txs.json';
 
         let newAddr = out.address.toString();
 

@@ -14,7 +14,7 @@ program
 
 program
     .command("start")
-    .description("starts the WSS")
+    .description("It starts the WSS")
     .argument("[path]", "path to the .env file containing all the redis access credentials")
     .option("-ru, --redis-url <string>", "redis url to access the database as described at https://github.com/redis/node-redis/blob/master/docs/client-configuration.md", `${defaultRedisUrl}`)
     .action(( path, options ) => {
@@ -23,7 +23,7 @@ program
 
 program
     .command("test")
-    .description("starts the WSS in test mode")
+    .description("It starts the WSS in test mode")
     .argument("[path]", "path to the .env file containing test addresses and redis access credentials", `${defaultPath}`)
     .option("-a, --amount <int>", "number of test addresses txs to be saved", `${defaultAmount}`)
     .option("-ru, --redis-url <string>", "redis url to access the database as described at https://github.com/redis/node-redis/blob/master/docs/client-configuration.md", `${defaultRedisUrl}`)

@@ -8,7 +8,7 @@ const defaultTest = true;
 const defaultRedisUrl = "redis://localhost:6379";
 
 program
-    .name("server")
+    .name("mutexo-server")
     .description("Mutexo Web Socket Server CLI")
     .version("0.0.1");
 

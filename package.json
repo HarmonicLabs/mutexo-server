@@ -9,8 +9,8 @@
         "build": "rm -rf ./dist && tsc --project ./tsconfig.json && tsc-alias -p ./tsconfig.json",
         "start": "npm run build && node dist/cli/index.js",
         "cli-help": "npm run build && node dist/cli/index.js help",
-        "cli-start-help": "npm run build && node dist/cli/index.js help start",
-        "cli-start-default": "npm run build && node dist/cli/index.js start",
+        "cli-main-help": "npm run build && node dist/cli/index.js help main",
+        "cli-main-default": "npm run build && node dist/cli/index.js main",
         "cli-test-help": "npm run build && node dist/cli/index.js help test",
         "cli-test-default": "npm run build && node dist/cli/index.js test",
         "test": "jest"

@@ -13,7 +13,7 @@ program
     .version("0.0.1");
 
 program
-    .command("start")
+    .command("main")
     .description("It starts the WSS")
     .argument("[path]", "path to the .env file containing all the redis access credentials")
     .option("-ru, --redis-url <string>", "redis url to access the database as described at https://github.com/redis/node-redis/blob/master/docs/client-configuration.md", `${defaultRedisUrl}`)

@@ -1,46 +1,76 @@
 import { AddressStr, Hash32, ITxOutRef, TxOut, TxOutRefStr, UTxO } from "@harmoniclabs/cardano-ledger-ts";
+import { existsSync, mkdir, readFileSync, writeFileSync } from "fs";
 import { dataToCbor, isData } from "@harmoniclabs/plutus-data";
 import { UTXO_VALUE_PREFIX, UTXO_PREFIX } from "../constants";
-import { mkdirSync, readFileSync, writeFileSync } from "fs";
 import { followTestAddrs } from "../redis/isFollowingAddr";
 import { getRedisClient } from "../redis/getRedisClient";
 import { ValueJson } from "../types/UTxOWithStatus";
 import { isAddrStr } from "../utils/isAddrStr";
 import { isHex } from "../utils/isHex";
+
+// ----- mutexo-tests support code -----
 import dotenv from "dotenv";
 
-// debug
 let nearlyStartedUp: boolean = true;
-let toBeFollowedTestAddrs: number = 2;
-dotenv.config();
+const isTest: boolean = process.argv[3] === "true" || process.argv[3] === "undefined";
+let toBeFollowedTestAddrs: number = process.argv[4] === "undefined" ? 2 : parseInt( process.argv[4] );
+
+try{
+    process.argv[2] !== "undefined" ? dotenv.config({ path: process.argv[2] }) : dotenv.config();
+}
+catch( err )
+{
+    throw new Error(`Error loading .env file (wrong path specified): ${err}`);
+}
+
+let envAddrsString: string;
+let addressKeys: string[];
+let testAddrs: { key: string, address: string }[];
+
+if( isTest )
+{
+    envAddrsString = process.env.ADDRESSES || '';
+    addressKeys = envAddrsString === '' ? [] : envAddrsString.split(',');
+    testAddrs = addressKeys.length === 0 ? [] : addressKeys.map(( key ) => {
+        const address = process.env[ key ];
+
+        if( !address ) throw new Error(`Missing value for key: ${key}`);
+        
+        return { key, address };
+    });
+}
+// -------------------------------------
 
 export async function saveTxOut(
     out: TxOut, 
     ref: TxOutRefStr
 ): Promise<void>
 {
-	//--- test ---
-	let newAddr = out.address.toString() as AddressStr;
+	// --- mutexo-tests support code ---
+    // it writes down txs caused by addresses listed into the .env file
+    if( isTest && testAddrs.some(( testAddr ) => ( testAddr.address === out.address.toString() )) )
+    {    
+        const dirPath: string = './../test-txs';
+        const filePath: string ='./../test-txs/test-txs.json';
 
-    if( newAddr === process.env.FIRST_ADDRESS! || newAddr === process.env.SECOND_ADDRESS! )
-    {
-        mkdirSync("./../mutexo-tests-objs", { recursive: true });
-        const jsonString = readFileSync("./../mutexo-tests-objs/mutexoTestPreviewTransactions.json", "utf-8");
+        let newAddr = out.address.toString();
+
+        if( !existsSync( dirPath ) ) 
+        {
+            await mkdir( dirPath, { recursive: true }, ( err ) => { console.log( err ) });
+        }
+
         let parsed;
 
-        try
-        {
-            parsed = JSON.parse( jsonString );
-        }
-        catch
-        {
-            parsed = [];
-        }
-        
-        if( nearlyStartedUp ) 
+        if( nearlyStartedUp || !existsSync( filePath ) ) 
         {
             nearlyStartedUp = false;
             parsed = [];
+        }
+        else
+        {
+            const jsonString = readFileSync( filePath, "utf-8" );
+            parsed = JSON.parse( jsonString );
         }
 
         let newUtxoRef = {
@@ -58,12 +88,9 @@ export async function saveTxOut(
             utxoRef: newUtxoRef
         });
 
-        writeFileSync(
-            "./../mutexo-tests-objs/mutexoTestPreviewTransactions.json", 
-            JSON.stringify( parsed, null, 2 )
-        );
+        writeFileSync( filePath, JSON.stringify( parsed, null, 2 ) );
     }
-    //------------------------
+    // ------------------------
 
     const redis = await getRedisClient();
     await Promise.all([

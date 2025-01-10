@@ -1,12 +1,12 @@
 import { BLOCKS_QUEQUE_KEY, BLOCK_PREFIX, MAX_N_VOLATILE_BLOCKS, TIP_HASH_KEY, UTXO_PREFIX, UTXO_VALUE_PREFIX } from "../constants";
 import { Cbor, LazyCborArray, CborArray, CborUInt } from "@harmoniclabs/cbor";
 import { BlockInfos, TxIO, tryGetBlockInfos } from "../types/BlockInfos";
-import { Tx, TxBody, TxOutRefStr } from "@harmoniclabs/cardano-ledger-ts";
+import { TxBody, TxOutRefStr } from "@harmoniclabs/cardano-ledger-ts";
 import { getRedisClient } from "../redis/getRedisClient";
+import { toHex } from "@harmoniclabs/uint8array-utils";
 import { saveTxOut } from "../funcs/saveUtxos";
 import { parentPort } from "worker_threads";
 import { createHash } from "blake2";
-import { toHex } from "@harmoniclabs/uint8array-utils";
 
 function blake2b_256( data: Uint8Array ): string
 {
@@ -145,6 +145,8 @@ async function removeImmutableBlock(): Promise<void>
 
     // inputs of immutable block will never be "re-spent" again
     const ins = immutable_block.txs.map( tx => tx.ins ).flat();
+
+    if( ins.length === 0 ) return;
 
     await Promise.all([
         // should we delete here?

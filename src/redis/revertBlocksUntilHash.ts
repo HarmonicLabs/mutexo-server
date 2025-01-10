@@ -1,6 +1,5 @@
 import { BLOCKS_QUEQUE_KEY, BLOCK_PREFIX, TIP_HASH_KEY, UTXO_PREFIX, UTXO_VALUE_PREFIX } from "../constants";
 import { BlockInfosWithHash, tryGetBlockInfos } from "../types/BlockInfos";
-import { UTxOStatus } from "../types/UTxOWithStatus";
 import { getRedisClient } from "./getRedisClient";
 import { hasBlockHash } from "./hasBlockHash";
 

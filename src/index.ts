@@ -1,32 +1,47 @@
 import { ChainSyncClient, LocalStateQueryClient, Multiplexer } from "@harmoniclabs/ouroboros-miniprotocols-ts";
-import { connect } from "net";
-import { acquire, syncAndAcquire } from "./funcs/syncAndAcquire";
 import { Cbor, CborArray, CborBytes, CborObj, CborTag, LazyCborArray, LazyCborObj } from "@harmoniclabs/cbor";
-import { toHex } from "@harmoniclabs/uint8array-utils";
 import { revertBlocksUntilHash } from "./redis/revertBlocksUntilHash";
-import { Worker } from "node:worker_threads";
 import { Address, AddressStr } from "@harmoniclabs/cardano-ledger-ts";
 import { queryAddrsUtxos } from "./funcs/queryAddrsUtxos";
+import { syncAndAcquire } from "./funcs/syncAndAcquire";
+import { toHex } from "@harmoniclabs/uint8array-utils";
+import { filterInplace } from "./utils/filterInplace";
+import { appendFileSync, mkdirSync } from "node:fs";
+import { isObject } from "@harmoniclabs/obj-utils";
 import { saveUtxos } from "./funcs/saveUtxos";
 import { isAddrStr } from "./utils/isAddrStr";
-import { isObject } from "@harmoniclabs/obj-utils";
-import { filterInplace } from "./utils/filterInplace";
+import { Worker } from "node:worker_threads";
+import { connect } from "net";
 
 const webSocketServer = new Worker(__dirname + "/workers/webSocketServer.js");
 const blockParser = new Worker(__dirname + "/workers/blockParser.js");
 
 process.on("beforeExit", () => {
+	// debug
+	console.log("!- THREADS MANAGER EXITING -!");
+
     webSocketServer.terminate();
     blockParser.terminate();
 });
 
 // block parser only notifies that it finished parsing a block
 // all new data is in redis
-blockParser.on("message", blockInfos => {
+blockParser.on("message", ( blockInfos ) => {
+	// debug
+	console.log("!- BLOCK PARSER THREAD RECEIVED A MESSAGE -!\n");
+
     webSocketServer.postMessage({
         type: "Block",
         data: blockInfos
     });
+});
+
+blockParser.on("error", ( err ) => {
+	// debug
+	console.log("!- BLOCK PARSER THREAD ERRORED: -!\n", err, "\n");
+
+    mkdirSync("./logs", { recursive: true });
+    appendFileSync("./logs/blockParserErrors.log", `[${new Date().toString()}][BLOCK PARSER ERROR]: ` + err + "\n");
 });
 
 void async function main()
@@ -40,14 +55,20 @@ void async function main()
     const lsqClient = new LocalStateQueryClient( mplexer );
 
     process.on("beforeExit", () => {
-        lsqClient.done();
+		// debug
+		console.log("!- WSS MAIN PROCESS IS ENDING -!\n");
+        
+		lsqClient.done();
         chainSyncClient.done();
         mplexer.close();
     });
 
     let tip = await syncAndAcquire( chainSyncClient, lsqClient );
 
-    webSocketServer.on("message", async msg => {
+    webSocketServer.on("message", async ( msg ) => {
+		// debug
+		console.log("!- WSS RECEIVED A MESSAGE: -!\n", msg, "\n");
+
         if( !isObject( msg ) ) return;
         if( msg.type === "queryAddrsUtxos" )
         {
@@ -69,6 +90,8 @@ void async function main()
     })
 
     chainSyncClient.on("rollForward", rollForward => {
+		// debug
+		console.log("!- WSS'CHAIN SYNC CLIENT IS ROLLING FORWARD -!\n");
 
         const blockData: Uint8Array = rollForward.cborBytes ?
             rollForwardBytesToBlockData( rollForward.cborBytes, rollForward.blockData ) : 
@@ -80,16 +103,14 @@ void async function main()
     });
 
     chainSyncClient.on("rollBackwards", rollBack => {
+		// debug
+		console.log("!- WSS'CHAIN SYNC CLIENT IS ROLLING BACKWARDS -!\n");
+	
         if( !rollBack.point.blockHeader ) return;
         
         tip = rollBack.tip.point;
-
         const hashStr = toHex( rollBack.point.blockHeader.hash );
-        
-        revertBlocksUntilHash( hashStr )
-        .then( revertedBlocks => {
-            
-        });
+        revertBlocksUntilHash( hashStr ).then( revertedBlocks => {});
     });
 
     while( true )
@@ -103,10 +124,12 @@ function rollForwardBytesToBlockData( bytes: Uint8Array, defaultCborObj: CborObj
 {
     let cbor: CborObj | LazyCborObj
     
-    try {
+    try 
+	{
         cbor = Cbor.parse( bytes );
     }
-    catch {
+    catch 
+	{
         return Cbor.encode( defaultCborObj ).toBuffer();
     }
     

@@ -1,27 +1,14 @@
 import { TxOutRefStr, AddressStr } from "@harmoniclabs/cardano-ledger-ts";
-import { isNonEmptySet } from "../utils/isNonEmptyArray";
 import type { WebSocket } from "ws";
-
-export type API_KEY = string;
-
-export function getClientApiKey( client: any ): API_KEY | undefined
-{
-    const k = client?.API_KEY;
-    return typeof k === "string" ? k : undefined;
-}
-export function setClientApiKey( client: any, apiKey: API_KEY ): void
-{
-    client.API_KEY = apiKey;
-}
 
 export function getWsClientIp( client: WebSocket ): string
 {
-    return (client as any).REMOTE_IP;
+    return (client as any).REMOTE_IP as AddressStr;
 }
 
 export function setWsClientIp( client: WebSocket, ip: string ): void
 {
-    (client as any).REMOTE_IP = ip;
+    (client as any).REMOTE_IP = ip as AddressStr;
 }
 
 export function getClientUtxoMutexSubs( client: any ): Set<TxOutRefStr>
@@ -34,6 +21,9 @@ export function getClientUtxoMutexSubs( client: any ): Set<TxOutRefStr>
     return subs;
 }
 
+/**
+ * it returns a set containing the utxo list that the client is subscribed to
+ */
 export function getClientUtxoFreeSubs( client: any ): Set<TxOutRefStr>
 {
     let subs = client.UTXO_FREE_SUBS;
@@ -43,6 +33,7 @@ export function getClientUtxoFreeSubs( client: any ): Set<TxOutRefStr>
     }
     return subs;
 }
+
 export function getClientUtxoLockSubs( client: any ): Set<TxOutRefStr>
 {
     let subs = client.UTXO_FREE_SUBS;

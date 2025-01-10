@@ -1,11 +1,12 @@
-import { TxBody, TxOutRefStr, Hash32 } from "@harmoniclabs/cardano-ledger-ts";
-import { Cbor, LazyCborArray, CborArray, CborUInt, CborMap, CborMapEntry, CborObj, CborBytes } from "@harmoniclabs/cbor";
-import { createHash } from "blake2";
-import { parentPort } from "worker_threads";
-import { BlockInfos, TxIO, tryGetBlockInfos } from "../types/BlockInfos";
-import { getRedisClient } from "../redis/getRedisClient";
 import { BLOCKS_QUEQUE_KEY, BLOCK_PREFIX, MAX_N_VOLATILE_BLOCKS, TIP_HASH_KEY, UTXO_PREFIX, UTXO_VALUE_PREFIX } from "../constants";
+import { Cbor, LazyCborArray, CborArray, CborUInt } from "@harmoniclabs/cbor";
+import { BlockInfos, TxIO, tryGetBlockInfos } from "../types/BlockInfos";
+import { TxBody, TxOutRefStr } from "@harmoniclabs/cardano-ledger-ts";
+import { getRedisClient } from "../redis/getRedisClient";
+import { toHex } from "@harmoniclabs/uint8array-utils";
 import { saveTxOut } from "../funcs/saveUtxos";
+import { parentPort } from "worker_threads";
+import { createHash } from "blake2";
 
 function blake2b_256( data: Uint8Array ): string
 {
@@ -73,20 +74,40 @@ async function parseBlock( blockData: Uint8Array ): Promise<void>
         const hash = blake2b_256_bytes( body );
         const hashStr = hash.toString("hex");
 
-        const tx = TxBody.fromCbor( body );
+        let tx: TxBody;
+        
+        try {
+            tx = TxBody.fromCbor( body );
+        }
+        catch( e )
+        {
+            throw new Error(
+                JSON.stringify({
+                    block: hashStr,
+                    tx_body: toHex( body ),
+                    tx_i,
+                    n_txs: txsBodies.length,
+                    error: e.message,
+                    stack: e.stack
+                }, undefined, 1)
+            );
+        }
 
-        blockInfos.txs[ tx_i ].ins  = tx.inputs.map( i => {
-            const ref = i.utxoRef.toString();
-            redis.hSet( `${UTXO_PREFIX}:${ref}`, "spent", 1 ); 
-            return ref;
-        });
-        blockInfos.txs[ tx_i ].outs = tx.outputs.map(( out, idx ) => {
-            const ref = `${hashStr}#${idx}` as TxOutRefStr;
-
-            saveTxOut( out, ref );
-
-            return ref;
-        });
+        blockInfos.txs[ tx_i ] = {
+            hash: hashStr,
+            ins: tx.inputs.map( i => {
+                const ref = i.utxoRef.toString();
+                redis.hSet( `${UTXO_PREFIX}:${ref}`, "spent", 1 ); 
+                return ref;
+            }),
+            outs: tx.outputs.map(( out, idx ) => {
+                const ref = `${hashStr}#${idx}` as TxOutRefStr;
+    
+                saveTxOut( out, ref );
+    
+                return ref;
+            })
+        };
     }
 
     await redis.json.set(
@@ -124,6 +145,8 @@ async function removeImmutableBlock(): Promise<void>
 
     // inputs of immutable block will never be "re-spent" again
     const ins = immutable_block.txs.map( tx => tx.ins ).flat();
+
+    if( ins.length === 0 ) return;
 
     await Promise.all([
         // should we delete here?

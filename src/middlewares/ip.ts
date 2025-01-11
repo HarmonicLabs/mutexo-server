@@ -11,7 +11,7 @@ export const ipRateLimit = rateLimit({
     limit: 1,
     store: new RedisStore({
         sendCommand: async (...args: string[]) => {
-            const redis = await getRedisClient();
+            const redis = getRedisClient();
             return redis.sendCommand( args );
         },
         prefix: "chainsync:mutexo:ip:rl:"

@@ -5,6 +5,7 @@ export type AnyRedisClient = Awaited<ReturnType<ReturnType<typeof createClient>[
 let _redis: AnyRedisClient | undefined = undefined;
 
 export function getRedisClient(): AnyRedisClient
+export function getRedisClient( redisUrl: string ): Promise<AnyRedisClient> | AnyRedisClient
 export function getRedisClient( redisUrl?: string ): Promise<AnyRedisClient> | AnyRedisClient
 {
     if( !_redis )

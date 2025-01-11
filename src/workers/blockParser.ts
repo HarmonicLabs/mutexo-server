@@ -5,8 +5,11 @@ import { TxBody, TxOutRefStr } from "@harmoniclabs/cardano-ledger-ts";
 import { getRedisClient } from "../redis/getRedisClient";
 import { toHex } from "@harmoniclabs/uint8array-utils";
 import { saveTxOut } from "../funcs/saveUtxos";
-import { parentPort } from "worker_threads";
+import { parentPort, workerData } from "node:worker_threads";
 import { createHash } from "blake2";
+import { setupWorker } from "../setupWorker";
+
+setupWorker( workerData );
 
 function blake2b_256( data: Uint8Array ): string
 {
@@ -49,7 +52,7 @@ async function parseBlock( blockData: Uint8Array ): Promise<void>
 
     const txsBodies = lazyTxsBodies.array;
 
-    const redis = await getRedisClient();
+    const redis = getRedisClient();
 
     // get the previous hash from redis rather than the block
     // so even if it is not the one on chain we are sure we have something 
@@ -128,7 +131,7 @@ async function parseBlock( blockData: Uint8Array ): Promise<void>
 
 async function removeImmutableBlock(): Promise<void>
 {
-    const redis = await getRedisClient();
+    const redis = getRedisClient();
 
     const actualLength = await redis.lLen( BLOCKS_QUEQUE_KEY );
 

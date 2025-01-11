@@ -15,7 +15,7 @@ import { tryGetBlockInfos } from "../types/BlockInfos";
 import { MutexoServerEvent } from "../wsServer/events";
 import { isObject } from "@harmoniclabs/obj-utils";
 import { Logger, LogLevel } from "../utils/Logger";
-import { parentPort } from "node:worker_threads";
+import { parentPort, workerData } from "node:worker_threads";
 import { ipRateLimit } from "../middlewares/ip";
 import { unrawData } from "../utils/unrawData";
 import { sign, verify } from "jsonwebtoken";
@@ -23,6 +23,9 @@ import { webcrypto } from "node:crypto";
 import { URL } from "node:url";
 import express from "express";
 import http from "http";
+import { setupWorker } from "../setupWorker";
+
+setupWorker( workerData );
 
 // close message
 const closeMsg = new MessageClose().toCbor().toBuffer();
@@ -60,7 +63,7 @@ const pendingBucketsDecrements: Map<() => void, NodeJS.Timeout> = new Map();
 async function leakingBucketOp( client: WebSocket ): Promise<number> 
 {
     const ip = getWsClientIp( client );
-    const redis = await getRedisClient();
+    const redis = getRedisClient();
     const incr = await redis.incr(`${LEAKING_BUCKET_BY_IP_PREFIX}:${ip}`);
 
     let timeout: NodeJS.Timeout;
@@ -144,7 +147,7 @@ wsServer.on("connection", async ( client, req ) => {
 
     logger.debug("> WSS CONNECTION AUTHORIZED WITH TOKEN: ", token, " <\n");
 
-    const redis = await getRedisClient();
+    const redis = getRedisClient();
     const infos = await redis.hGetAll(`${TEMP_AUTH_TOKEN_PREFIX}:${token}`);
 
     if( !infos ) 
@@ -190,7 +193,7 @@ wsServer.on("close", () => {
 app.get("/wsAuth", ipRateLimit, async ( req, res ) => {
     logger.debug("!- APP IS AUTHENTICATING -!\n");
 
-    const redis = await getRedisClient();
+    const redis = getRedisClient();
     let secretBytes = new Uint8Array(32);
     const ip = getClientIpFromReq( req );
     let tokenStr: string;
@@ -233,7 +236,7 @@ parentPort?.on("message", async ( msg ) => {
 
         if( !blockInfos ) return;
 
-        const redis = await getRedisClient();
+        const redis = getRedisClient();
         const txs = blockInfos.txs;
 
         for( const { ins, outs } of txs ) 
@@ -580,7 +583,7 @@ async function terminateClient( client: WebSocket )
     // -- super duper iper illegal --
     // (test purposes only)
     const ip = getWsClientIp( client );
-    const redis = await getRedisClient();
+    const redis = getRedisClient();
     redis.del(`${LEAKING_BUCKET_BY_IP_PREFIX}:${ip}`);
     // ------------------------------
 
@@ -684,7 +687,7 @@ async function handleClientSub( client: WebSocket, req: ClientSub ): Promise<voi
         else if( filter instanceof UtxoFilter ) 
         {
             const ref = filter.utxoRef.toString();
-            const redis = await getRedisClient();
+            const redis = getRedisClient();
             const addr = await redis.hGet(`${UTXO_PREFIX}:${ref}`, "addr") as AddressStr | undefined;
                                 
             if( !addr || !await isFollowingAddr( addr ) ) 
@@ -771,7 +774,7 @@ async function handleClientUnsub( client: WebSocket, req: ClientUnsub ): Promise
         else if( filter instanceof UtxoFilter ) 
         {
             const ref = filter.utxoRef.toString();
-            const redis = await getRedisClient();
+            const redis = getRedisClient();
 
             const addr = await redis.hGet(`${UTXO_PREFIX}:${ref}`, "addr") as AddressStr | undefined;
                                             
@@ -862,7 +865,7 @@ async function handleClientReqLock( client: WebSocket, req: ClientReqLock ): Pro
 }
 
 async function emitUtxoLockEvts(refs: TxOutRefStr[]): Promise<void> {
-    const redis = await getRedisClient();
+    const redis = getRedisClient();
 
     const datas = await Promise.all(
         refs.map(async ref => {
@@ -938,7 +941,7 @@ async function handleClientReqFree( client: WebSocket, req: ClientReqFree ): Pro
 }
 
 async function emitUtxoFreeEvts(refs: TxOutRefStr[]): Promise<void> {
-    const redis = await getRedisClient();
+    const redis = getRedisClient();
 
     const datas = await Promise.all(
         refs.map(async ref => {

@@ -3,16 +3,12 @@
     "version": "0.0.1",
     "type": "commonjs",
     "bin": {
-        "mutexo-server": "./cli/index.js"
+        "mutexo-server": "./dist/cli/index.js"
     },
     "scripts": {
         "build": "rm -rf ./dist && tsc --project ./tsconfig.json && tsc-alias -p ./tsconfig.json",
         "start": "npm run build && node dist/cli/index.js",
-        "cli-help": "npm run build && node dist/cli/index.js help",
-        "cli-main-help": "npm run build && node dist/cli/index.js help main",
-        "cli-main-default": "npm run build && node dist/cli/index.js main",
-        "cli-test-help": "npm run build && node dist/cli/index.js help test",
-        "cli-test-default": "npm run build && node dist/cli/index.js test",
+        "cli": "npm run build && node dist/cli/index.js ",
         "test": "jest"
     },
     "dependencies": {

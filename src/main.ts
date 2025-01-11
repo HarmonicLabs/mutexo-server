@@ -12,40 +12,32 @@ import { saveUtxos } from "./funcs/saveUtxos";
 import { isAddrStr } from "./utils/isAddrStr";
 import { Worker } from "node:worker_threads";
 import { connect } from "net";
+import { MutexoServerConfig } from "./MutexoServerConfig/MutexoServerConfig";
 
-const webSocketServer = new Worker(__dirname + "/workers/webSocketServer.js");
-const blockParser = new Worker(__dirname + "/workers/blockParser.js");
-
-process.on("beforeExit", () => {
-	// debug
-	console.log("!- THREADS MANAGER EXITING -!");
-
-    webSocketServer.terminate();
-    blockParser.terminate();
-});
-
-// block parser only notifies that it finished parsing a block
-// all new data is in redis
-blockParser.on("message", ( blockInfos ) => {
-	// debug
-	console.log("!- BLOCK PARSER THREAD RECEIVED A MESSAGE -!\n");
-
-    webSocketServer.postMessage({
-        type: "Block",
-        data: blockInfos
-    });
-});
-
-blockParser.on("error", ( err ) => {
-	// debug
-	console.log("!- BLOCK PARSER THREAD ERRORED: -!\n", err, "\n");
-
-    mkdirSync("./logs", { recursive: true });
-    appendFileSync("./logs/blockParserErrors.log", `[${new Date().toString()}][BLOCK PARSER ERROR]: ` + err + "\n");
-});
-
-void async function main()
+export async function main( cfg: MutexoServerConfig)
 {
+    const webSocketServer = new Worker(__dirname + "/workers/webSocketServer.js", { workerData: cfg });
+    const blockParser = new Worker(__dirname + "/workers/blockParser.js", { workerData: cfg });
+
+    process.on("beforeExit", () => {
+        webSocketServer.terminate();
+        blockParser.terminate();
+    });
+
+    // block parser only notifies that it finished parsing a block
+    // all new data is in redis
+    blockParser.on("message", ( blockInfos ) => {
+        webSocketServer.postMessage({
+            type: "Block",
+            data: blockInfos
+        });
+    });
+
+    blockParser.on("error", ( err ) => {
+        mkdirSync("./logs", { recursive: true });
+        appendFileSync("./logs/blockParserErrors.log", `[${new Date().toString()}][BLOCK PARSER ERROR]: ` + err + "\n");
+    });
+
     const mplexer = new Multiplexer({
         connect: () => connect({ path: process.env.CARDANO_NODE_SOCKET_PATH ?? "" }),
         protocolType: "node-to-client"
@@ -55,9 +47,6 @@ void async function main()
     const lsqClient = new LocalStateQueryClient( mplexer );
 
     process.on("beforeExit", () => {
-		// debug
-		console.log("!- WSS MAIN PROCESS IS ENDING -!\n");
-        
 		lsqClient.done();
         chainSyncClient.done();
         mplexer.close();
@@ -66,9 +55,6 @@ void async function main()
     let tip = await syncAndAcquire( chainSyncClient, lsqClient );
 
     webSocketServer.on("message", async ( msg ) => {
-		// debug
-		console.log("!- WSS RECEIVED A MESSAGE: -!\n", msg, "\n");
-
         if( !isObject( msg ) ) return;
         if( msg.type === "queryAddrsUtxos" )
         {
@@ -90,9 +76,6 @@ void async function main()
     })
 
     chainSyncClient.on("rollForward", rollForward => {
-		// debug
-		console.log("!- WSS'CHAIN SYNC CLIENT IS ROLLING FORWARD -!\n");
-
         const blockData: Uint8Array = rollForward.cborBytes ?
             rollForwardBytesToBlockData( rollForward.cborBytes, rollForward.blockData ) : 
             Cbor.encode( rollForward.blockData ).toBuffer();
@@ -103,9 +86,6 @@ void async function main()
     });
 
     chainSyncClient.on("rollBackwards", rollBack => {
-		// debug
-		console.log("!- WSS'CHAIN SYNC CLIENT IS ROLLING BACKWARDS -!\n");
-	
         if( !rollBack.point.blockHeader ) return;
         
         tip = rollBack.tip.point;
@@ -117,8 +97,7 @@ void async function main()
     {
         void await chainSyncClient.requestNext();
     }
-}();
-
+};
 
 function rollForwardBytesToBlockData( bytes: Uint8Array, defaultCborObj: CborObj ): Uint8Array
 {

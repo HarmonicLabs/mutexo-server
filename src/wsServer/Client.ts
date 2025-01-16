@@ -6,7 +6,7 @@ import type { WebSocket } from "ws";
 export class Client
     implements ClientSubs
 {
-    readonly mutex: Set<TxOutRefStr>;
+    // readonly mutex: Set<TxOutRefStr>;
     readonly utxoFree: Set<TxOutRefStr>;
     readonly utxoLock: Set<TxOutRefStr>;
     readonly utxoSpent: Set<TxOutRefStr>;
@@ -15,13 +15,15 @@ export class Client
     readonly addrSpent: Set<AddressStr>;
     readonly addrOut: Set<AddressStr>;
 
+    readonly lockedUtxos: Set<TxOutRefStr>;
+
     constructor(
         readonly ws: WebSocket,
         public ip: string,
     )
     {
         const {
-            mutex,
+            // mutex,
             utxoFree,
             utxoLock,
             utxoSpent,
@@ -31,7 +33,7 @@ export class Client
             addrOut,
         } = createClientSubs();
 
-        this.mutex = mutex;
+        // this.mutex = mutex;
         this.utxoFree = utxoFree;
         this.utxoLock = utxoLock;
         this.utxoSpent = utxoSpent;
@@ -43,7 +45,13 @@ export class Client
 
     static fromWs( ws: WebSocket ): Client
     {
-        // return new Client( ws, getWsClientIp( ws ) );
+        if(!((ws as any).MUTEXO_CLIENT_INSTANCE instanceof Client))
+        {
+            (ws as any).MUTEXO_CLIENT_INSTANCE = new Client(
+                ws,
+                getWsClientIp( ws )
+            );
+        }
         return (ws as any).MUTEXO_CLIENT_INSTANCE as Client;
     }
 
@@ -62,6 +70,11 @@ export class Client
     send( ...args: any[] ): void
     {
         return (this.ws.send as any)( ...args );
+    }
+
+    terminate(): void
+    {
+        return this.ws.terminate();
     }
 }
 

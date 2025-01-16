@@ -22,14 +22,9 @@ import { URL } from "node:url";
 import express from "express";
 import http from "http";
 import { setupWorker } from "../setupWorker";
-import { utxoFreeSubs } from "../wsServer/state/utxoFreeEvt/utxoFreeSubs";
-import { isBlockingUTxO } from "../wsServer/state/lock/isBlockingUtxo";
-import { unlockUTxO } from "../wsServer/state/lock/unlockUtxo";
-import { subUtxoFreeEvt } from "../wsServer/state/utxoFreeEvt/subUtxoFreeEvt";
-import { utxoLockSubs } from "../wsServer/state/lockEvt/utxoLockSubs";
-import { get } from "node:http";
-import { addrFree, addrLock, addrOut, addrSpent } from "../wsServer/state/events";
+import { addrFree, addrLock, addrOut, addrSpent, utxoFree, utxoLock, utxoSpent } from "../wsServer/state/events";
 import { Client } from "../wsServer/Client";
+import { Mutex } from "../wsServer/state/mutex/mutex";
 
 setupWorker( workerData );
 
@@ -89,7 +84,7 @@ const pingInterval = setInterval(
             if( !isAlive( client ) )
             {
                 client.send( closeMsg );
-                terminateClient(client);
+                terminateClient( Client.fromWs( client ) );
                 return;
             }
 
@@ -111,7 +106,7 @@ function terminateAll()
     for(const client of clients)
     {
         client.send( closeMsg );
-        terminateClient(client);
+        terminateClient( Client.fromWs( client ) );
     }
 }
 
@@ -119,12 +114,12 @@ process.on("beforeExit", terminateAll);
 wsServer.on("error", console.error);
 wsServer.on("close", terminateAll);
 
-wsServer.on("connection", async ( client, req ) => {
+wsServer.on("connection", async ( ws, req ) => {
     const ip = getClientIpFromReq( req );
     if( !ip ) 
     {
-        client.send( missingIpMsg );
-        terminateClient( client );
+        ws.send( missingIpMsg );
+        terminateClient( Client.fromWs( ws ) );
         return;
     }
 
@@ -133,8 +128,8 @@ wsServer.on("connection", async ( client, req ) => {
 
     if( !token ) 
     {
-        client.send( missingAuthTokenMsg );
-        terminateClient( client );
+        ws.send( missingAuthTokenMsg );
+        terminateClient( Client.fromWs( ws ) );
         return;
     }
 
@@ -143,8 +138,8 @@ wsServer.on("connection", async ( client, req ) => {
 
     if( !infos ) 
     {
-        client.send( invalidAuthTokenMsg );
-        terminateClient( client );
+        ws.send( invalidAuthTokenMsg );
+        terminateClient( Client.fromWs( ws ) );
         return;
     }
 
@@ -157,20 +152,23 @@ wsServer.on("connection", async ( client, req ) => {
     } 
     catch 
     {
-        client.send( invalidAuthTokenMsg );
-        terminateClient( client );
+        ws.send( invalidAuthTokenMsg );
+        terminateClient( Client.fromWs( ws ) );
         return;
     }
 
-    setWsClientIp( client, ip );
-    leakingBucketOp( client );
+    // sets `MUTEXO_CLIENT_INSTANCE` on ws
+    const client = Client.fromWs( ws );
 
-    ( client as any ).isAlive = true;
+    setWsClientIp( ws, ip );
+    leakingBucketOp( ws );
 
-    client.on("error", console.error);
-    client.on("pong", heartbeat);
-    client.on("ping", function handleClientPing( this: WebSocket ) { this.pong(); });
-    client.on("message", handleClientMessage.bind( client ));
+    ( ws as any ).isAlive = true;
+
+    ws.on("error", console.error);
+    ws.on("pong", heartbeat);
+    ws.on("ping", function handleClientPing( this: WebSocket ) { this.pong(); });
+    ws.on("message", handleClientMessage.bind( ws ));
 });
 
 wsServer.on("close", () => {    
@@ -207,7 +205,7 @@ app.get("/wsAuth", ipRateLimit, async ( req, res ) => {
 });
 
 http_server.listen((3001), () => {    
-    logger.debug("!- THE SERVER IS LISTENING ON PORT 3001 -!")
+    logger.info("Server listening on port 3001");
 });
 
 parentPort?.on("message", async ( msg ) => {
@@ -238,8 +236,8 @@ parentPort?.on("message", async ( msg ) => {
                             txHash: fromHex( txHash )
                         }).toCbor().toBuffer();
 
-                        utxoSpentClients.get( inp )?.forEach(( client ) => client.send( msg ));
-                        addrSpentClients.get( addr )?.forEach(( client ) => client.send( msg ));
+                        utxoSpent.emitToKey( inp, msg );
+                        addrSpent.emitToKey( addr, msg );
                     })
                 ),
                 Promise.all(
@@ -253,7 +251,7 @@ parentPort?.on("message", async ( msg ) => {
                             addr: Address.fromString( addr )
                         }).toCbor().toBuffer();
 
-                        outputClients.get( addr )?.forEach(( client ) => client.send( msg ));
+                        addrOut.emitToKey( addr, msg );
                     })
                 )
             ]);
@@ -261,29 +259,30 @@ parentPort?.on("message", async ( msg ) => {
     }
 });
 
-function unsubAll(client: WebSocket) {
-    unsubAllOutput(client);
-    unsubAllSpentUTxO(client);
-    unsubAllSpentAddr(client);
-    unsubAllFreeUTxO(client);
-    unsubAllLockedUTxO(client);
-    unsubAllFreeAddr(client);
-    unsubAllLockedAddr(client);
+function unsubAll(client: Client) {
+    // mutex.unsubClient( client );
+    utxoFree.unsubClient( client );
+    utxoLock.unsubClient( client );
+    utxoSpent.unsubClient( client );
+    addrFree.unsubClient( client );
+    addrLock.unsubClient( client );
+    addrSpent.unsubClient( client );
+    addrOut.unsubClient( client );
 }
 
-async function terminateClient( client: WebSocket ) 
+async function terminateClient( client: Client ) 
 {
     unsubAll( client );
 
     // -- super duper iper illegal --
     // (test purposes only)
-    const ip = getWsClientIp( client );
-    const redis = getRedisClient();
-    redis.del(`${LEAKING_BUCKET_BY_IP_PREFIX}:${ip}`);
+    // const ip = getWsClientIp( client );
+    // const redis = getRedisClient();
+    // redis.del(`${LEAKING_BUCKET_BY_IP_PREFIX}:${ip}`);
     // ------------------------------
 
     client.terminate();
-    delete (client as any).MUTEXO_CLIENT_INSTANCE;
+    delete (client.ws as any).MUTEXO_CLIENT_INSTANCE;
 }
 
 /**
@@ -294,8 +293,6 @@ async function terminateClient( client: WebSocket )
  */
 async function handleClientMessage( this: WebSocket, data: RawData ): Promise<void>
 {
-    logger.debug("!- HANDLING MUTEXO CLIENT MESSAGE -!");
-        
     const client = this;
     // heartbeat
     ( client as any ).isAlive = true;
@@ -313,11 +310,11 @@ async function handleClientMessage( this: WebSocket, data: RawData ): Promise<vo
 
     const req: ClientReq = parseClientReq( bytes );
 
-    if      ( req instanceof Close )         return terminateClient( client );
-    else if ( req instanceof ClientSub )            return handleClientSub( client, req );
-    else if ( req instanceof ClientUnsub )          return handleClientUnsub( client, req );
-    else if ( req instanceof ClientReqFree )        return handleClientReqFree( client, req );
-    else if ( req instanceof ClientReqLock )        return handleClientReqLock( client, req );
+    if      ( req instanceof Close )         return terminateClient( Client.fromWs( client ) );
+    else if ( req instanceof ClientSub )            return handleClientSub( Client.fromWs( client ), req );
+    else if ( req instanceof ClientUnsub )          return handleClientUnsub( Client.fromWs( client ), req );
+    else if ( req instanceof ClientReqFree )        return handleClientReqFree( Client.fromWs( client ), req );
+    else if ( req instanceof ClientReqLock )        return handleClientReqLock( Client.fromWs( client ), req );
 
     return;
 }
@@ -380,13 +377,13 @@ async function handleClientSub( client: Client, req: ClientSub ): Promise<void>
             switch( evtName ) 
             {
                 case MutexoServerEvent.Lock:
-                    subLockEvt(ref, client);
+                    utxoLock.sub( ref, client );
                     break;
                 case MutexoServerEvent.Free:
-                    subUtxoFreeEvt(ref, client);
+                    utxoFree.sub( ref, client );
                     break;
                 case MutexoServerEvent.Input:
-                    subUtxoSpentEvt(ref, client);
+                    utxoSpent.sub( ref, client );
                     break;
                 case MutexoServerEvent.Output:
                 default:
@@ -407,11 +404,9 @@ async function handleClientSub( client: Client, req: ClientSub ): Promise<void>
     return;
 }
 
-async function handleClientUnsub( client: WebSocket, req: ClientUnsub ): Promise<void> 
+async function handleClientUnsub( client: Client, req: ClientUnsub ): Promise<void> 
 {
     const { id, eventType, filters } = req;
-
-    logger.debug("!- HANDLING MUTEXO CLIENT UNSUB MESSAGE [", id, "] -!");
 
     for( const filter of filters )
     {
@@ -431,16 +426,16 @@ async function handleClientUnsub( client: WebSocket, req: ClientUnsub ): Promise
             switch( evtName ) 
             {
                 case MutexoServerEvent.Free:
-                    unsubAddrLockEvt( addrStr, client );
+                    addrLock.sub( addrStr, client );
                     break;
                 case MutexoServerEvent.Lock:
-                    unsubAddrFreeEvt( addrStr, client );
+                    addrFree.sub( addrStr, client );
                     break;
                 case MutexoServerEvent.Input:
-                    unsubClientFromSpentAddr( addrStr, client );
+                    addrSpent.sub( addrStr, client );
                     break;
                 case MutexoServerEvent.Output:
-                    unsubClientFromOutput( addrStr, client );
+                    addrOut.sub( addrStr, client );
                     break;
                 default:
                     client.send( unknownUnsubEvtByAddrMsg );
@@ -463,13 +458,13 @@ async function handleClientUnsub( client: WebSocket, req: ClientUnsub ): Promise
             switch( evtName ) 
             {
                 case MutexoServerEvent.Lock:
-                    unsubLockEvt( ref, client );
+                    utxoLock.unsub( ref, client );
                     break;
                 case MutexoServerEvent.Free:
-                    unsubUtxoFreeEvt( ref, client );
+                    utxoFree.unsub( ref, client );
                     break;
                 case MutexoServerEvent.Input:
-                    unsubUtxoSpent(ref, client);
+                    utxoSpent.unsub( ref, client );
                     break;
                 case MutexoServerEvent.Output:
                 default:
@@ -490,25 +485,36 @@ async function handleClientUnsub( client: WebSocket, req: ClientUnsub ): Promise
     return;
 }
 
-async function handleClientReqLock( client: WebSocket, req: ClientReqLock ): Promise<void> 
+async function handleClientReqLock( client: Client, req: ClientReqLock ): Promise<void> 
 {
     const { id, utxoRefs, required } = req;
 
-    const lockable = utxoRefs.map(forceTxOutRefStr).filter((utxoRef) => unlockUTxO(client, utxoRef));
+    let nLocked = 0
+    const locked = (
+        utxoRefs.map( forceTxOutRefStr )
+        .filter((utxoRef) => {
+            if( nLocked >= required ) return false;
+            const result = Mutex.lock(utxoRef, client);
+            if( result ) nLocked++;
+            return result;
+        })
+    );
 
-    if (lockable.length < required)
+    if( locked.length < required )
     {
+        for( const ref of locked ) Mutex.unlock( client, ref );
+
         const msg = new MutexFailure({
             id,
             mutexOp: MutexOp.MutexoLock,
-            utxoRefs: lockable.map((ref) => forceTxOutRef(ref)),
+            utxoRefs: locked.map( forceTxOutRef ),
         }).toCbor().toBuffer();
 
         client.send(msg);
         return;
     }
 
-    emitUtxoLockEvts( lockable );
+    emitUtxoLockEvts( locked );
 }
 
 async function emitUtxoLockEvts(refs: TxOutRefStr[]): Promise<void> {
@@ -527,30 +533,21 @@ async function emitUtxoLockEvts(refs: TxOutRefStr[]): Promise<void> {
             addr: Address.fromString(data.addr)
         }).toCbor().toBuffer();
 
-        utxoLockSubs
-            .get(data.ref)
-            ?.forEach(client => {
-                client.send(msg);
-            });
-
-        addrLockClients
-            .get(data.addr)
-            ?.forEach(client => {
-                client.send(msg)
-            });
+        utxoLock.emitToKey(data.ref, msg);
+        addrLock.emitToKey(data.addr, msg);
     }
 }
 
-async function handleClientReqFree( client: WebSocket, req: ClientReqFree ): Promise<void> 
+async function handleClientReqFree( client: Client, req: ClientReqFree ): Promise<void> 
 {
     const { id, utxoRefs } = req;
 
-    logger.debug("!- HANDLING MUTEXO CLIENT FREE MESSAGE [", id, "] -!");
+    const freed = (
+        utxoRefs.map( forceTxOutRefStr )
+        .filter( ref => Mutex.isCurrentLocker( client, ref ) )
+    );
 
-    const freed = utxoRefs.map( forceTxOutRefStr )
-        .filter(( utxoRef ) => ( isBlockingUTxO( client, utxoRef ) ));
-
-    if( freed.length === 0 ) 
+    if( freed.length <= 0 ) 
     {        
         const msg = new MutexFailure({
             id,
@@ -559,28 +556,20 @@ async function handleClientReqFree( client: WebSocket, req: ClientReqFree ): Pro
         }).toCbor().toBuffer();
 
         client.send( msg );
-
-        logger.debug("!- [", id, "] MUTEXO CLIENT FREE REQUEST HANDLED -!");
-
         return;
     }
-    else 
-    {
-        freed.forEach(( ref ) => ( void unlockUTxO( client, ref ) ));
 
-        const msg = new MutexSuccess({
-            id,
-            mutexOp: MutexOp.MutexoFree,
-            utxoRefs: freed.map(( ref ) => forceTxOutRef( ref )),
-        }).toCbor().toBuffer();
+    for( const ref of freed ) Mutex.unlock( client, ref );
 
-        client.send( msg );
-        emitUtxoUtxoFreeEvts( freed );
+    const msg = new MutexSuccess({
+        id,
+        mutexOp: MutexOp.MutexoFree,
+        utxoRefs: freed.map( forceTxOutRef),
+    }).toCbor().toBuffer();
 
-        logger.debug("!- [", id, "] MUTEXO CLIENT FREE REQUEST HANDLED -!");
-
-        return;
-    }
+    client.send( msg );
+    emitUtxoUtxoFreeEvts( freed );
+    return;
 }
 
 async function emitUtxoUtxoFreeEvts(refs: TxOutRefStr[]): Promise<void> {
@@ -599,17 +588,8 @@ async function emitUtxoUtxoFreeEvts(refs: TxOutRefStr[]): Promise<void> {
             addr: Address.fromString(data.addr)
         }).toCbor().toBuffer();
 
-        utxoFreeSubs
-            .get(data.ref)
-            ?.forEach(client => {
-                client.send(msg);
-            });
-
-        addrFreeClients
-            .get(data.addr)
-            ?.forEach(client => {
-                client.send(msg)
-            });
+        utxoFree.emitToKey(data.ref, msg);
+        addrFree.emitToKey(data.addr, msg);
     }
 }
 

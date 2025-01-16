@@ -71,6 +71,10 @@ export class Logger
     {
         if( this.canInfo() ) console.log( ...stuff );
     }
+    info( ...stuff: any[] )
+    {
+        if( this.canInfo() ) console.info( ...stuff );
+    }
     warn( ...stuff: any[] )
     {
         if( this.canWarn() ) console.warn( ...stuff );

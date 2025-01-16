@@ -1,6 +1,6 @@
 import { EvtKey, EvtManager } from "../EvtManager";
 
-export const mutex = new EvtManager("mutex", EvtKey.TxOutRefStr);
+// export const mutex = new EvtManager("mutex", EvtKey.TxOutRefStr);
 export const utxoFree = new EvtManager("utxoFree", EvtKey.TxOutRefStr);
 export const utxoLock = new EvtManager("utxoLock", EvtKey.TxOutRefStr);
 export const utxoSpent = new EvtManager("utxoSpent", EvtKey.TxOutRefStr);

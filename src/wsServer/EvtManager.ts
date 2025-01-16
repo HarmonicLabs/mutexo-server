@@ -36,6 +36,14 @@ export class EvtManager<EK extends EvtKey>
         this.clients = new Map();
     }
 
+    emitToKey( key: EvtKeyType<EK>, data: Uint8Array ): void
+    {
+        const subs = this.clients.get( key );
+        if( !subs ) return;
+
+        for( const client of subs ) client.ws.send( data );
+    }
+
     sub( key: EvtKeyType<EK>, client: Client ): void
     {
         let subs = this.clients.get( key );

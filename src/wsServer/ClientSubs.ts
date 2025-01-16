@@ -1,7 +1,7 @@
 import { AddressStr, TxOutRefStr } from "@harmoniclabs/cardano-ledger-ts";
 
 export interface ClientSubs {
-    readonly mutex: Set<TxOutRefStr>;
+    // readonly mutex: Set<TxOutRefStr>;
     readonly utxoFree: Set<TxOutRefStr>;
     readonly utxoLock: Set<TxOutRefStr>;
     readonly utxoSpent: Set<TxOutRefStr>;
@@ -16,7 +16,7 @@ export type ClientSubsName = keyof ClientSubs;
 export function createClientSubs(): ClientSubs
 {
     return Object.freeze({ 
-        mutex: new Set(),
+        // mutex: new Set(),
         utxoFree: new Set(),
         utxoLock: new Set(),
         utxoSpent: new Set(),

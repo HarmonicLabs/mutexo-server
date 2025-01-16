@@ -6,7 +6,8 @@ import { queryAddrsUtxos } from "./funcs/queryAddrsUtxos";
 import { syncAndAcquire } from "./funcs/syncAndAcquire";
 import { toHex } from "@harmoniclabs/uint8array-utils";
 import { filterInplace } from "./utils/filterInplace";
-import { appendFileSync, mkdirSync } from "node:fs";
+import { mkdirSync } from "node:fs";
+import { appendFile } from "node:fs/promises";
 import { isObject } from "@harmoniclabs/obj-utils";
 import { saveUtxos } from "./funcs/saveUtxos";
 import { isAddrStr } from "./utils/isAddrStr";
@@ -14,7 +15,7 @@ import { Worker } from "node:worker_threads";
 import { connect } from "net";
 import { MutexoServerConfig } from "./MutexoServerConfig/MutexoServerConfig";
 
-export async function main( cfg: MutexoServerConfig)
+export async function main( cfg: MutexoServerConfig )
 {
     const webSocketServer = new Worker(__dirname + "/workers/webSocketServer.js", { workerData: cfg });
     const blockParser = new Worker(__dirname + "/workers/blockParser.js", { workerData: cfg });
@@ -33,9 +34,12 @@ export async function main( cfg: MutexoServerConfig)
         });
     });
 
+    mkdirSync("./logs", { recursive: true });
     blockParser.on("error", ( err ) => {
-        mkdirSync("./logs", { recursive: true });
-        appendFileSync("./logs/blockParserErrors.log", `[${new Date().toString()}][BLOCK PARSER ERROR]: ` + err + "\n");
+        appendFile(
+            "./logs/blockParserErrors.log",
+            `[${new Date().toString()}][BLOCK PARSER ERROR]: ` + err + "\n"
+        );
     });
 
     const mplexer = new Multiplexer({
@@ -52,7 +56,7 @@ export async function main( cfg: MutexoServerConfig)
         mplexer.close();
     });
 
-    let tip = await syncAndAcquire( chainSyncClient, lsqClient );
+    let tip = await syncAndAcquire( chainSyncClient, lsqClient, cfg.network );
 
     webSocketServer.on("message", async ( msg ) => {
         if( !isObject( msg ) ) return;

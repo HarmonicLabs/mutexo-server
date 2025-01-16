@@ -32,26 +32,3 @@ export async function unfollowAddr( ipAddress: AddressStr ): Promise<void>
     // let card = await redis.sRem( `${API_TO_ADDR_SET_PREFIX}:${PUBLIC_API_KEY}`, ipAddress );
     // if( card <= 0 ) redis.del( `${API_TO_ADDR_SET_PREFIX}:${PUBLIC_API_KEY}` );
 }
-
-// TEST CODE
-
-const logger = new Logger({ logLevel: LogLevel.DEBUG });
-
-export async function followTestAddrs( testAddrs: AddressStr[] ): Promise<void>
-{
-	for( const testAddr of testAddrs )
-	{
-		await followAddr( testAddr ).then(
-			() => logger.debug("> FOLLOWED ADDRESS: ", testAddr ," <\n")
-		);
-
-		// await verifyFollowedTestAddr( testAddr );
-	}
-}
-
-export async function verifyFollowedTestAddr( testAddr: AddressStr ): Promise<void>
-{
-	await isFollowingAddr( testAddr ).then(
-		( isFollowing ) => logger.debug("> ", testAddr, " HAS BEEN FOLLOWED: ", isFollowing, " <\n")
-	);
-}

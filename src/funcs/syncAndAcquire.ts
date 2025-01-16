@@ -46,17 +46,20 @@ export function acquire( lsqClient: LocalStateQueryClient, point: ChainPoint ): 
 
 export async function syncAndAcquire(
     chainSyncClient: ChainSyncClient,
-    lsqClient: LocalStateQueryClient
+    lsqClient: LocalStateQueryClient,
+    networkMagic: number
 ): Promise<ChainPoint>
 {
     const mplexer = chainSyncClient.mplexer;
     
     // handshake
-    const handshakeResult = await new HandshakeClient( mplexer )
-    .propose({
-        networkMagic: CardanoNetworkMagic.Preview,
-        query: false
-    });
+    const handshakeResult = (
+        await new HandshakeClient( mplexer )
+        .propose({
+            networkMagic,
+            query: false
+        })
+    );
     if(!( handshakeResult instanceof HandshakeAcceptVersion )) throw new Error("Handshake failed");
 
     const tip = await sync( chainSyncClient );

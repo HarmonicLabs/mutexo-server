@@ -22,7 +22,7 @@ export class Logger
 {
     private static globalConfig: LoggerConfig = Object.freeze({ logLevel: LogLevel.ERROR });
 
-    private config: LoggerConfig = defaultLoggerConfig;
+    private config: LoggerConfig = { ...defaultLoggerConfig };
 
     constructor( config?: Partial<LoggerConfig> )
     {
@@ -84,3 +84,5 @@ export class Logger
         if( this.canError() ) console.error( ...stuff );
     }
 }
+
+export const logger = new Logger({ logLevel: LogLevel.DEBUG });

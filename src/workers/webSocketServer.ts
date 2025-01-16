@@ -1,5 +1,5 @@
 import { AddrFilter, ClientReq, ClientReqFree, ClientReqLock, ClientSub, ClientUnsub, Close, MutexoError, MutexFailure, MutexoFree, MutexoInput, MutexoLock, MutexoOutput, MutexSuccess, UtxoFilter, MutexOp, SubSuccess } from "@harmoniclabs/mutexo-messages";
-import { getClientUtxoSpentSubs, getClientAddrSpentSubs, getClientOutputsSubs, setWsClientIp, getWsClientIp, getClientUtxoFreeSubs, getClientUtxoLockSubs, getClientAddrFreeSubs, getClientAddrLockSubs } from "../wsServer/clientProps";
+import { setWsClientIp, getWsClientIp } from "../wsServer/clientProps";
 import { LEAKING_BUCKET_BY_IP_PREFIX, LEAKING_BUCKET_MAX_CAPACITY, LEAKING_BUCKET_TIME, TEMP_AUTH_TOKEN_PREFIX, UTXO_PREFIX } from "../constants";
 import { Address, AddressStr, forceTxOutRef, forceTxOutRefStr, TxOutRefStr } from "@harmoniclabs/cardano-ledger-ts";
 import { parseClientReq } from "@harmoniclabs/mutexo-messages/dist/utils/parsers";
@@ -12,7 +12,7 @@ import { RawData, WebSocket, WebSocketServer } from "ws";
 import { tryGetBlockInfos } from "../types/BlockInfos";
 import { MutexoServerEvent } from "../wsServer/events";
 import { isObject } from "@harmoniclabs/obj-utils";
-import { Logger, LogLevel } from "../utils/Logger";
+import { logger } from "../utils/Logger";
 import { parentPort, workerData } from "node:worker_threads";
 import { ipRateLimit } from "../middlewares/ip";
 import { unrawData } from "../utils/unrawData";
@@ -45,7 +45,6 @@ const unknownUnsubEvtByUTxORefMsg = new MutexoError({ errorCode: 9 }).toCbor().t
 const unknownUnsubEvtMsg = new MutexoError({ errorCode: 10 }).toCbor().toBuffer();
 const unknownSubFilter = new MutexoError({ errorCode: 11 }).toCbor().toBuffer();
 
-const logger = new Logger({ logLevel: LogLevel.DEBUG });
 
 const app = express();
 app.use( express.json() );

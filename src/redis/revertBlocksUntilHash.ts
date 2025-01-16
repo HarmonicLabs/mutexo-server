@@ -53,7 +53,7 @@ export async function revertBlocksUntilHash( hashStr: string ): Promise<BlockInf
                 Promise.all( ins.map( ref => redis.hSet(`${UTXO_PREFIX}:${ref}`, "spent", 0 ) ) ),
                 
                 // mutex is managed in the websocket server
-                // we are rolling back, so the utxo is free to be used, no matter if a user blocked it or not
+                // we are rolling back, so the utxo is free to be used, no matter if a user blocked or not
                 // redis.del( ins.map( ref => `${UTXO_PREFIX}:${ref}:${UTXO_LOCK_SET_POSTFIX}` ) )
             ]);
         }

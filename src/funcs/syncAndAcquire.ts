@@ -1,4 +1,4 @@
-import { ChainPoint, ChainSyncClient, LocalStateQueryClient, MiniProtocol, N2CHandshakeVersion, N2CMessageAcceptVersion, N2CMessageProposeVersion, n2cHandshakeMessageFromCbor } from "@harmoniclabs/ouroboros-miniprotocols-ts";
+import { CardanoNetworkMagic, ChainPoint, ChainSyncClient, HandshakeAcceptVersion, HandshakeClient, IVersionData, LocalStateQueryClient, MiniProtocol } from "@harmoniclabs/ouroboros-miniprotocols-ts";
 
 export async function sync( chainSyncClient: ChainSyncClient ): Promise<ChainPoint>
 {
@@ -52,37 +52,12 @@ export async function syncAndAcquire(
     const mplexer = chainSyncClient.mplexer;
     
     // handshake
-    await new Promise<void>(( resolve => {
-        mplexer.on( MiniProtocol.Handshake, chunk => {
-
-            const msg = n2cHandshakeMessageFromCbor( chunk );
-
-            if( msg instanceof N2CMessageAcceptVersion )
-            {
-                mplexer.clearListeners( MiniProtocol.Handshake );
-                resolve();
-            }
-            else {
-                console.error( msg );
-                throw new Error("TODO: handle rejection")
-            }
-        });
-
-        mplexer.send(
-            new N2CMessageProposeVersion({
-                versionTable: [
-                    {
-                        version: N2CHandshakeVersion.v14,
-                        data: { networkMagic: 2 }
-                    }
-                ]
-            }).toCbor().toBuffer(),
-            {
-                hasAgency: true,
-                protocol: MiniProtocol.Handshake
-            }
-        );
-    }));
+    const handshakeResult = await new HandshakeClient( mplexer )
+    .propose({
+        networkMagic: CardanoNetworkMagic.Preview,
+        query: false
+    });
+    if(!( handshakeResult instanceof HandshakeAcceptVersion )) throw new Error("Handshake failed");
 
     const tip = await sync( chainSyncClient );
 

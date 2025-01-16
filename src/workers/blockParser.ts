@@ -55,7 +55,7 @@ async function parseBlock( blockData: Uint8Array ): Promise<void>
     const redis = getRedisClient();
 
     // get the previous hash from redis rather than the block
-    // so even if it is not the one on chain we are sure we have something 
+    // so even if is not the one on chain we are sure we have something 
     const prevHash: string = await redis.get( TIP_HASH_KEY ) ?? "";
         // headerBodyCbor[2] instanceof CborBytes ?
         // toHex( headerBodyCbor[2].buffer ) :

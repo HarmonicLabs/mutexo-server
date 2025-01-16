@@ -22,7 +22,7 @@ export function getClientUtxoMutexSubs( client: any ): Set<TxOutRefStr>
 }
 
 /**
- * it returns a set containing the utxo list that the client is subscribed to
+ * returns the utxos the client is waiting to be free
  */
 export function getClientUtxoFreeSubs( client: any ): Set<TxOutRefStr>
 {

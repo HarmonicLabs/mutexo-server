@@ -1,6 +1,7 @@
 
 export interface MutexoServerCliArgs {
     configPath: string;
+    network: "mainet" | "preview" | "preprod" | number;
     ignoreEnv: boolean;
     addr: string[];
     nodeSocketPath: string;
@@ -10,6 +11,7 @@ export interface MutexoServerCliArgs {
 
 export interface MutexoServerConfig {
     ignoreEnv: boolean;
+    network: number;
     nodeSocketPath: string;
     redisUrl: string;
     addrs: string[];

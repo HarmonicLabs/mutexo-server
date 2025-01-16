@@ -24,7 +24,7 @@ export async function main( cfg: MutexoServerConfig)
         blockParser.terminate();
     });
 
-    // block parser only notifies that it finished parsing a block
+    // block parser only notifies that finished parsing a block
     // all new data is in redis
     blockParser.on("message", ( blockInfos ) => {
         webSocketServer.postMessage({

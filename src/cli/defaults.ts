@@ -8,3 +8,4 @@ export const defaultRedisUrl = "redis://localhost:6379";
 export const defaultIngoreDotenv = false;
 export const defaultAddrs: Readonly<AddressStr[]> = Object.freeze([]);
 export const defaultWssPort = 3001;
+export const defaultNetwork = "mainnet";

@@ -1,9 +1,10 @@
 import { readFile } from "node:fs/promises";
 import { MutexoServerCliArgs, MutexoServerConfig } from "./MutexoServerConfig";
-import { defaultAddrs, defaultIngoreDotenv, defaultRedisUrl, defaultWssPort } from "../cli/defaults";
+import { defaultAddrs, defaultIngoreDotenv, defaultNetwork, defaultRedisUrl, defaultWssPort } from "../cli/defaults";
 import { AddressStr } from "@harmoniclabs/cardano-ledger-ts";
 import { isAddrStr } from "../utils/isAddrStr";
 import { existsSync } from "node:fs";
+import { CardanoNetworkMagic } from "@harmoniclabs/ouroboros-miniprotocols-ts";
 
 export async function parseCliArgs( args: Partial<MutexoServerCliArgs> ): Promise<MutexoServerConfig>
 {
@@ -44,6 +45,12 @@ export async function parseCliArgs( args: Partial<MutexoServerCliArgs> ): Promis
     if( !nodeSocketPath ) throw new Error("No node socket path provided");
     if( !existsSync( nodeSocketPath ) ) throw new Error("Node socket path does not exist or has been moved");
 
+    const network = (
+        getNetworkMagic( args.network ) ?? 
+        getNetworkMagic( jsonCfg.network ) ??
+        getNetworkMagic( defaultNetwork )!
+    );
+
     return {
         ignoreEnv,
         port: isTypeOrElse(
@@ -61,6 +68,7 @@ export async function parseCliArgs( args: Partial<MutexoServerCliArgs> ): Promis
                 defaultRedisUrl
             )
         ),
+        network,
         addrs
     };
 }
@@ -84,4 +92,20 @@ function getAddrsStrArr( thing: any ): AddressStr[]
     thing = thing.filter( isAddrStr );
     if( thing.length <= 0 ) return [];
     return thing as AddressStr[];
+}
+
+function getNetworkMagic( thing: any ): number | undefined
+{
+    if(
+        typeof thing === "number" &&
+        Number.isSafeInteger( thing ) &&
+        thing > 0
+    ) return thing;
+    if( typeof thing === "string" )
+    {
+        if( thing === "mainnet" ) return CardanoNetworkMagic.Mainnet;
+        if( thing === "preview" ) return CardanoNetworkMagic.Preview;
+        if( thing === "preprod" ) return CardanoNetworkMagic.Preprod;
+    }
+    return undefined;
 }

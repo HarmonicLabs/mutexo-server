@@ -14,6 +14,7 @@ import { isAddrStr } from "./utils/isAddrStr";
 import { Worker } from "node:worker_threads";
 import { connect } from "net";
 import { MutexoServerConfig } from "./MutexoServerConfig/MutexoServerConfig";
+import { logger } from "./utils/Logger";
 
 export async function main( cfg: MutexoServerConfig )
 {
@@ -34,13 +35,7 @@ export async function main( cfg: MutexoServerConfig )
         });
     });
 
-    mkdirSync("./logs", { recursive: true });
-    blockParser.on("error", ( err ) => {
-        appendFile(
-            "./logs/blockParserErrors.log",
-            `[${new Date().toString()}][BLOCK PARSER ERROR]: ` + err + "\n"
-        );
-    });
+    blockParser.on("error", logger.error );
 
     const mplexer = new Multiplexer({
         connect: () => connect({ path: process.env.CARDANO_NODE_SOCKET_PATH ?? "" }),
@@ -57,6 +52,10 @@ export async function main( cfg: MutexoServerConfig )
     });
 
     let tip = await syncAndAcquire( chainSyncClient, lsqClient, cfg.network );
+
+    // await Promise.all(
+    //     cfg.addrs.map( followAddr )
+    // )
 
     webSocketServer.on("message", async ( msg ) => {
         if( !isObject( msg ) ) return;

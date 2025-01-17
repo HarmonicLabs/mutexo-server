@@ -1,8 +1,6 @@
-import { AddressStr, Hash32, ITxOutRef, TxOut, TxOutRefStr, UTxO } from "@harmoniclabs/cardano-ledger-ts";
-import { existsSync, mkdir, readFileSync, writeFileSync } from "fs";
+import { AddressStr, Hash32, TxOut, TxOutRefStr, UTxO } from "@harmoniclabs/cardano-ledger-ts";
 import { dataToCbor, isData } from "@harmoniclabs/plutus-data";
 import { UTXO_VALUE_PREFIX, UTXO_PREFIX } from "../constants";
-import { followTestAddrs } from "../redis/isFollowingAddr";
 import { getRedisClient } from "../redis/getRedisClient";
 import { ValueJson } from "../types/UTxOWithStatus";
 import { isAddrStr } from "../utils/isAddrStr";
@@ -15,7 +13,7 @@ export async function saveTxOut(
     ref: TxOutRefStr
 ): Promise<void>
 {
-    const redis = getRedisClient();
+    // const redis = getRedisClient();
     await Promise.all([
 		redis.json.set( `${UTXO_VALUE_PREFIX}:${ref}`, "$", out.value.toJson() as ValueJson ),
         redis.hSet(

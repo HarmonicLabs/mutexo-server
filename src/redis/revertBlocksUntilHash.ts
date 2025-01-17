@@ -6,7 +6,7 @@ import { hasBlockHash } from "./hasBlockHash";
 export async function revertBlocksUntilHash( hashStr: string ): Promise<BlockInfosWithHash[]>
 {
     if( !await hasBlockHash( hashStr ) ) return [];
-
+ 
     const redis = getRedisClient();
 
     let tip_hash = await redis.get( TIP_HASH_KEY ) ?? "";

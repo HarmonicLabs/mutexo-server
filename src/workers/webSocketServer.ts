@@ -6,7 +6,7 @@ import { parseClientReq } from "@harmoniclabs/mutexo-messages/dist/utils/parsers
 import { eventIndexToMutexoEventName } from "../utils/mutexEvents";
 import { fromHex, toHex } from "@harmoniclabs/uint8array-utils";
 import { getClientIp as getClientIpFromReq } from "request-ip";
-import { isFollowingAddr } from "../redis/isFollowingAddr";
+// import { isFollowingAddr } from "../redis/isFollowingAddr";
 import { getRedisClient } from "../redis/getRedisClient";
 import { RawData, WebSocket, WebSocketServer } from "ws";
 import { tryGetBlockInfos } from "../types/BlockInfos";
@@ -14,7 +14,7 @@ import { MutexoServerEvent } from "../wsServer/events";
 import { isObject } from "@harmoniclabs/obj-utils";
 import { logger } from "../utils/Logger";
 import { parentPort, workerData } from "node:worker_threads";
-import { ipRateLimit } from "../middlewares/ip";
+import { wsAuthIpRateLimit } from "../middlewares/ip";
 import { unrawData } from "../utils/unrawData";
 import { sign, verify } from "jsonwebtoken";
 import { webcrypto } from "node:crypto";
@@ -25,8 +25,17 @@ import { setupWorker } from "../setupWorker";
 import { addrFree, addrLock, addrOut, addrSpent, utxoFree, utxoLock, utxoSpent } from "../wsServer/state/events";
 import { Client } from "../wsServer/Client";
 import { Mutex } from "../wsServer/state/mutex/mutex";
+import { MutexoServerConfig } from "../MutexoServerConfig/MutexoServerConfig";
 
 setupWorker( workerData );
+
+const cfg = workerData as MutexoServerConfig;
+const cfgAddrs = new Set( cfg.addrs );
+
+function isFollowingAddr( addr: AddressStr ): boolean
+{
+    return cfgAddrs.has( addr );
+}
 
 // close message
 const closeMsg = new Close().toCbor().toBuffer();
@@ -59,7 +68,7 @@ const pendingBucketsDecrements: Map<() => void, NodeJS.Timeout> = new Map();
 async function leakingBucketOp( client: WebSocket ): Promise<number> 
 {
     const ip = getWsClientIp( client );
-    const redis = getRedisClient();
+    // const redis = getRedisClient();
     const incr = await redis.incr(`${LEAKING_BUCKET_BY_IP_PREFIX}:${ip}`);
 
     let timeout: NodeJS.Timeout;
@@ -132,7 +141,7 @@ wsServer.on("connection", async ( ws, req ) => {
         return;
     }
 
-    const redis = getRedisClient();
+    // const redis = getRedisClient();
     const infos = await redis.hGetAll(`${TEMP_AUTH_TOKEN_PREFIX}:${token}`);
 
     if( !infos ) 
@@ -176,8 +185,8 @@ wsServer.on("close", () => {
 
 // HTTP SERVER
 
-app.get("/wsAuth", ipRateLimit, async ( req, res ) => {
-    const redis = getRedisClient();
+app.get("/wsAuth", wsAuthIpRateLimit, async ( req, res ) => {
+    // const redis = getRedisClient();
     let secretBytes = new Uint8Array(32);
     const ip = getClientIpFromReq( req );
     let tokenStr: string;
@@ -215,7 +224,7 @@ parentPort?.on("message", async ( msg ) => {
 
         if( !blockInfos ) return;
 
-        const redis = getRedisClient();
+        // const redis = getRedisClient();
         const txs = blockInfos.txs;
 
         for( const { ins, outs } of txs ) 
@@ -329,7 +338,7 @@ async function handleClientSub( client: Client, req: ClientSub ): Promise<void>
         if( filter instanceof AddrFilter ) 
         {
             const addrStr = filter.addr.toString();
-            const isFollowing = await isFollowingAddr( addrStr );
+            const isFollowing = isFollowingAddr( addrStr );
 
             if( !isFollowing ) 
             {
@@ -364,10 +373,10 @@ async function handleClientSub( client: Client, req: ClientSub ): Promise<void>
         else if( filter instanceof UtxoFilter ) 
         {
             const ref = filter.utxoRef.toString();
-            const redis = getRedisClient();
+            // const redis = getRedisClient();
             const addr = await redis.hGet(`${UTXO_PREFIX}:${ref}`, "addr") as AddressStr | undefined;
                                 
-            if( !addr || !await isFollowingAddr( addr ) ) 
+            if( !addr || !isFollowingAddr( addr ) ) 
             {
                 client.send( utxoNotFoundMsg );
                 return;
@@ -414,7 +423,7 @@ async function handleClientUnsub( client: Client, req: ClientUnsub ): Promise<vo
         if( filter instanceof AddrFilter ) 
         {
             const addrStr = filter.addr.toString();
-            const isFollowing = await isFollowingAddr( addrStr );
+            const isFollowing = isFollowingAddr( addrStr );
 
             if( !isFollowing ) 
             {
@@ -444,11 +453,11 @@ async function handleClientUnsub( client: Client, req: ClientUnsub ): Promise<vo
         else if( filter instanceof UtxoFilter ) 
         {
             const ref = filter.utxoRef.toString();
-            const redis = getRedisClient();
+            // const redis = getRedisClient();
 
             const addr = await redis.hGet(`${UTXO_PREFIX}:${ref}`, "addr") as AddressStr | undefined;
                                             
-            if( !addr || !await isFollowingAddr( addr ) ) 
+            if( !addr || !isFollowingAddr( addr ) ) 
             {
                 client.send( utxoNotFoundMsg );
                 return;
@@ -467,7 +476,7 @@ async function handleClientUnsub( client: Client, req: ClientUnsub ): Promise<vo
                     break;
                 case MutexoServerEvent.Output:
                 default:
-                    client.send( unknownSubEvtByUTxORefMsg );
+                    client.send( unknownUnsubEvtByUTxORefMsg );
                     return;
             }
         }
@@ -517,7 +526,7 @@ async function handleClientReqLock( client: Client, req: ClientReqLock ): Promis
 }
 
 async function emitUtxoLockEvts(refs: TxOutRefStr[]): Promise<void> {
-    const redis = getRedisClient();
+    // const redis = getRedisClient();
 
     const datas = await Promise.all(
         refs.map(async ref => {
@@ -572,7 +581,7 @@ async function handleClientReqFree( client: Client, req: ClientReqFree ): Promis
 }
 
 async function emitUtxoUtxoFreeEvts(refs: TxOutRefStr[]): Promise<void> {
-    const redis = getRedisClient();
+    // const redis = getRedisClient();
 
     const datas = await Promise.all(
         refs.map(async ref => {

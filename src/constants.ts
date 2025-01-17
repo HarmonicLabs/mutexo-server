@@ -14,6 +14,3 @@ export const LEAKING_BUCKET_TIME = 60_000;
 export const LEAKING_BUCKET_MAX_CAPACITY = 20;
 
 export const TEMP_AUTH_TOKEN_PREFIX = "auth:temp_token";
-
-// TO CHANGE, IT REFERS TO AN UNIQUE API KEY COMMON TO ALL THE CLIENTS
-export const PUBLIC_API_KEY = "public_api_key";

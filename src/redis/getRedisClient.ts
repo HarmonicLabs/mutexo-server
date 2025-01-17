@@ -1,5 +1,4 @@
 import { createClient } from "redis";
-import dotenv from "dotenv";
 
 export type AnyRedisClient = Awaited<ReturnType<ReturnType<typeof createClient>["connect"]>>; 
 let _redis: AnyRedisClient | undefined = undefined;

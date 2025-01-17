@@ -1,15 +1,24 @@
 import { BLOCKS_QUEQUE_KEY, BLOCK_PREFIX, MAX_N_VOLATILE_BLOCKS, TIP_HASH_KEY, UTXO_PREFIX, UTXO_VALUE_PREFIX } from "../constants";
 import { Cbor, LazyCborArray, CborArray, CborUInt } from "@harmoniclabs/cbor";
 import { BlockInfos, TxIO, tryGetBlockInfos } from "../types/BlockInfos";
-import { TxBody, TxOutRefStr } from "@harmoniclabs/cardano-ledger-ts";
+import { AddressStr, TxBody, TxOutRefStr } from "@harmoniclabs/cardano-ledger-ts";
 import { getRedisClient } from "../redis/getRedisClient";
 import { toHex } from "@harmoniclabs/uint8array-utils";
 import { saveTxOut } from "../funcs/saveUtxos";
 import { parentPort, workerData } from "node:worker_threads";
 import { createHash } from "blake2";
 import { setupWorker } from "../setupWorker";
+import { MutexoServerConfig } from "../MutexoServerConfig/MutexoServerConfig";
 
 setupWorker( workerData );
+
+const cfg = workerData as MutexoServerConfig;
+const cfgAddrs = new Set( cfg.addrs );
+
+function isFollowingAddr( addr: AddressStr ): boolean
+{
+    return cfgAddrs.has( addr );
+}
 
 function blake2b_256( data: Uint8Array ): string
 {
@@ -51,8 +60,6 @@ async function parseBlock( blockData: Uint8Array ): Promise<void>
     }
 
     const txsBodies = lazyTxsBodies.array;
-
-    const redis = getRedisClient();
 
     // get the previous hash from redis rather than the block
     // so even if is not the one on chain we are sure we have something 

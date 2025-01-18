@@ -1,4 +1,4 @@
-import { EvtKey, EvtManager } from "../EvtManager";
+import { EvtKey, EvtManager } from "../wsServer/EvtManager";
 
 // export const mutex = new EvtManager("mutex", EvtKey.TxOutRefStr);
 export const utxoFree = new EvtManager("utxoFree", EvtKey.TxOutRefStr);

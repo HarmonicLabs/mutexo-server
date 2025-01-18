@@ -1,7 +1,7 @@
 import { AddrFilter, ClientReq, ClientReqFree, ClientReqLock, ClientSub, ClientUnsub, Close, MutexoError, MutexFailure, MutexoFree, MutexoInput, MutexoLock, MutexoOutput, MutexSuccess, UtxoFilter, MutexOp, SubSuccess } from "@harmoniclabs/mutexo-messages";
 import { setWsClientIp, getWsClientIp } from "../wsServer/clientProps";
 import { LEAKING_BUCKET_BY_IP_PREFIX, LEAKING_BUCKET_MAX_CAPACITY, LEAKING_BUCKET_TIME, TEMP_AUTH_TOKEN_PREFIX, UTXO_PREFIX } from "../constants";
-import { Address, AddressStr, forceTxOutRef, forceTxOutRefStr, TxOutRefStr } from "@harmoniclabs/cardano-ledger-ts";
+import { Address, AddressStr, forceTxOutRef, forceTxOutRefStr, TxOut, TxOutRefStr } from "@harmoniclabs/cardano-ledger-ts";
 import { parseClientReq } from "@harmoniclabs/mutexo-messages/dist/utils/parsers";
 import { eventIndexToMutexoEventName } from "../utils/mutexEvents";
 import { fromHex, toHex } from "@harmoniclabs/uint8array-utils";
@@ -22,10 +22,12 @@ import { URL } from "node:url";
 import express from "express";
 import http from "http";
 import { setupWorker } from "../setupWorker";
-import { addrFree, addrLock, addrOut, addrSpent, utxoFree, utxoLock, utxoSpent } from "../wsServer/state/events";
+import { addrFree, addrLock, addrOut, addrSpent, utxoFree, utxoLock, utxoSpent } from "../state/events";
 import { Client } from "../wsServer/Client";
-import { Mutex } from "../wsServer/state/mutex/mutex";
+import { Mutex } from "../state/mutex/mutex";
 import { MutexoServerConfig } from "../MutexoServerConfig/MutexoServerConfig";
+import { IMutexoInputJson, IMutexoOutputJson } from "./data";
+import { MainWorkerQuery } from "./MainWorkerQuery";
 
 setupWorker( workerData );
 
@@ -54,35 +56,7 @@ const unknownUnsubEvtByUTxORefMsg = new MutexoError({ errorCode: 9 }).toCbor().t
 const unknownUnsubEvtMsg = new MutexoError({ errorCode: 10 }).toCbor().toBuffer();
 const unknownSubFilter = new MutexoError({ errorCode: 11 }).toCbor().toBuffer();
 
-
-const app = express();
-app.use( express.json() );
-app.set("trust proxy", 1);
-
-const http_server = http.createServer( app );
-
-const wsServer = new WebSocketServer({ server: http_server, path: "/events", maxPayload: 512 });
-
-const pendingBucketsDecrements: Map<() => void, NodeJS.Timeout> = new Map();
-
-async function leakingBucketOp( client: WebSocket ): Promise<number> 
-{
-    const ip = getWsClientIp( client );
-    // const redis = getRedisClient();
-    const incr = await redis.incr(`${LEAKING_BUCKET_BY_IP_PREFIX}:${ip}`);
-
-    let timeout: NodeJS.Timeout;
-    function cb() 
-    {
-        pendingBucketsDecrements.delete(cb);
-        if( timeout ) clearTimeout( timeout );
-        redis.decr(`${LEAKING_BUCKET_BY_IP_PREFIX}:${ip}`);
-    };
-
-    timeout = setTimeout(cb, LEAKING_BUCKET_TIME);
-    pendingBucketsDecrements.set(cb, timeout);
-    return incr;
-}
+const wsServer = new WebSocketServer({ path: "/events", maxPayload: 512 });
 
 const pingInterval = setInterval(
     () => {
@@ -103,13 +77,17 @@ const pingInterval = setInterval(
     30_000
 );
 
+const mainWorker = new MainWorkerQuery( parentPort );
+
+async function getAddrOfRef( ref: TxOutRefStr ): Promise<AddressStr | undefined> 
+{
+    const [{ out: bytes }] = await mainWorker.resolveUtxos([ref]);
+    if( !bytes ) return undefined;
+    return TxOut.fromCbor(bytes).address.toString();
+}
+
 function terminateAll()
 {
-    for( const [cb, timeout] of pendingBucketsDecrements )
-    {
-        clearTimeout( timeout );
-        cb();
-    }
     const clients = wsServer.clients;
     for(const client of clients)
     {
@@ -141,22 +119,18 @@ wsServer.on("connection", async ( ws, req ) => {
         return;
     }
 
-    // const redis = getRedisClient();
-    const infos = await redis.hGetAll(`${TEMP_AUTH_TOKEN_PREFIX}:${token}`);
-
-    if( !infos ) 
+    const authTokenSecret = await mainWorker.getAuthTokenSecret( token );
+    if( !authTokenSecret )
     {
         ws.send( invalidAuthTokenMsg );
         terminateClient( Client.fromWs( ws ) );
         return;
     }
-
-    const { secretHex } = infos;
-
+    
     let stuff: any
     try 
     {
-        stuff = verify( token, Buffer.from( secretHex, "hex" ) );
+        stuff = verify( token, Buffer.from( authTokenSecret ) );
     } 
     catch 
     {
@@ -169,8 +143,9 @@ wsServer.on("connection", async ( ws, req ) => {
     const client = Client.fromWs( ws );
 
     setWsClientIp( ws, ip );
-    leakingBucketOp( ws );
+    mainWorker.incrementLeakingBucket( ip );
 
+    // heartbeat
     ( ws as any ).isAlive = true;
 
     ws.on("error", console.error);
@@ -183,87 +158,38 @@ wsServer.on("close", () => {
     clearInterval( pingInterval )
 });
 
-// HTTP SERVER
-
-app.get("/wsAuth", wsAuthIpRateLimit, async ( req, res ) => {
-    // const redis = getRedisClient();
-    let secretBytes = new Uint8Array(32);
-    const ip = getClientIpFromReq( req );
-    let tokenStr: string;
-
-    do 
-    {
-        webcrypto.getRandomValues( secretBytes );
-        tokenStr = sign(
-            { ip },
-            Buffer.from( secretBytes ),
-            { expiresIn: 30 }
-        );
-    }
-    while( await redis.exists(`${TEMP_AUTH_TOKEN_PREFIX}:${tokenStr}`) );
-
-    const key = `${TEMP_AUTH_TOKEN_PREFIX}:${tokenStr}`;
-
-    const secretHex = toHex( secretBytes );
-
-    await redis.hSet( key, { secretHex } );
-    await redis.expire( key, 30 );
-
-    res.status(200).send( tokenStr );
-});
-
-http_server.listen((3001), () => {    
-    logger.info("Server listening on port 3001");
-});
-
 parentPort?.on("message", async ( msg ) => {
     if( !isObject( msg ) ) return;
-    if( msg.type === "Block" ) 
+    if( msg.type === "queryResult" )
     {
-        const blockInfos = tryGetBlockInfos( msg.data );
+        mainWorker.dispatchEvent( msg.data );
+        return;
+    }
+    if( msg.type === "input" )
+    {
+        const data = msg.data as IMutexoInputJson;
 
-        if( !blockInfos ) return;
+        const evt = new MutexoInput({
+            utxoRef: forceTxOutRef( data.ref ),
+            addr: Address.fromString( data.addr ),
+            txHash: fromHex( data.txHash )
+        }).toCbor().toBuffer();
 
-        // const redis = getRedisClient();
-        const txs = blockInfos.txs;
+        utxoSpent.emitToKey( data.ref, evt );
+        addrSpent.emitToKey( data.addr, evt );
+        return;
+    }
+    if( msg.type === "output" )
+    {
+        const data = msg.data as IMutexoOutputJson;
 
-        for( const { ins, outs } of txs ) 
-        {
-            const txHash = outs[0].split("#")[0];
+        const evt = new MutexoOutput({
+            utxoRef: forceTxOutRef( data.ref ),
+            addr: Address.fromString( data.addr )
+        }).toCbor().toBuffer();
 
-            await Promise.all([
-                Promise.all(
-                    ins.map( async inp => {                                                
-                        const addr = await redis.hGet(`${UTXO_PREFIX}:${inp}`, "addr") as AddressStr | undefined;
-                                              
-                        if( !addr ) return;
-
-                        const msg = new MutexoInput({
-                            utxoRef: forceTxOutRef( inp ),
-                            addr: Address.fromString( addr ),
-                            txHash: fromHex( txHash )
-                        }).toCbor().toBuffer();
-
-                        utxoSpent.emitToKey( inp, msg );
-                        addrSpent.emitToKey( addr, msg );
-                    })
-                ),
-                Promise.all(
-                    outs.map( async out => {
-                        const addr = await redis.hGet(`${UTXO_PREFIX}:${out}`, "addr") as AddressStr | undefined;
-                                                                        
-                        if( !addr ) return;
-
-                        const msg = new MutexoOutput({
-                            utxoRef: forceTxOutRef( out ),
-                            addr: Address.fromString( addr )
-                        }).toCbor().toBuffer();
-
-                        addrOut.emitToKey( addr, msg );
-                    })
-                )
-            ]);
-        }
+        addrOut.emitToKey( data.addr, evt );
+        return;
     }
 });
 
@@ -285,7 +211,7 @@ async function terminateClient( client: Client )
     // -- super duper iper illegal --
     // (test purposes only)
     // const ip = getWsClientIp( client );
-    // const redis = getRedisClient();
+    // // const redis = getRedisClient();
     // redis.del(`${LEAKING_BUCKET_BY_IP_PREFIX}:${ip}`);
     // ------------------------------
 
@@ -301,12 +227,12 @@ async function terminateClient( client: Client )
  */
 async function handleClientMessage( this: WebSocket, data: RawData ): Promise<void>
 {
-    const client = this;
+    const ws = this;
+    const client = Client.fromWs( ws );
     // heartbeat
-    ( client as any ).isAlive = true;
-    const reqsInLastMinute = await leakingBucketOp( client );
+    ( ws as any ).isAlive = true;
 
-    if( reqsInLastMinute > LEAKING_BUCKET_MAX_CAPACITY ) 
+    if(!(await mainWorker.incrementLeakingBucket( client.ip ))) 
     {
         client.send( tooManyReqsMsg );
         return;
@@ -318,11 +244,11 @@ async function handleClientMessage( this: WebSocket, data: RawData ): Promise<vo
 
     const req: ClientReq = parseClientReq( bytes );
 
-    if      ( req instanceof Close )         return terminateClient( Client.fromWs( client ) );
-    else if ( req instanceof ClientSub )            return handleClientSub( Client.fromWs( client ), req );
-    else if ( req instanceof ClientUnsub )          return handleClientUnsub( Client.fromWs( client ), req );
-    else if ( req instanceof ClientReqFree )        return handleClientReqFree( Client.fromWs( client ), req );
-    else if ( req instanceof ClientReqLock )        return handleClientReqLock( Client.fromWs( client ), req );
+    if      ( req instanceof Close )            return terminateClient( client );
+    else if ( req instanceof ClientSub )        return handleClientSub( client, req );
+    else if ( req instanceof ClientUnsub )      return handleClientUnsub( client, req );
+    else if ( req instanceof ClientReqFree )    return handleClientReqFree( client, req );
+    else if ( req instanceof ClientReqLock )    return handleClientReqLock( client, req );
 
     return;
 }
@@ -373,8 +299,8 @@ async function handleClientSub( client: Client, req: ClientSub ): Promise<void>
         else if( filter instanceof UtxoFilter ) 
         {
             const ref = filter.utxoRef.toString();
-            // const redis = getRedisClient();
-            const addr = await redis.hGet(`${UTXO_PREFIX}:${ref}`, "addr") as AddressStr | undefined;
+
+            const addr = await getAddrOfRef( ref )
                                 
             if( !addr || !isFollowingAddr( addr ) ) 
             {
@@ -453,9 +379,9 @@ async function handleClientUnsub( client: Client, req: ClientUnsub ): Promise<vo
         else if( filter instanceof UtxoFilter ) 
         {
             const ref = filter.utxoRef.toString();
-            // const redis = getRedisClient();
+            // // const redis = getRedisClient();
 
-            const addr = await redis.hGet(`${UTXO_PREFIX}:${ref}`, "addr") as AddressStr | undefined;
+            const addr = await getAddrOfRef( ref )
                                             
             if( !addr || !isFollowingAddr( addr ) ) 
             {
@@ -526,11 +452,11 @@ async function handleClientReqLock( client: Client, req: ClientReqLock ): Promis
 }
 
 async function emitUtxoLockEvts(refs: TxOutRefStr[]): Promise<void> {
-    // const redis = getRedisClient();
+    // // const redis = getRedisClient();
 
     const datas = await Promise.all(
         refs.map(async ref => {
-            const addr = await redis.hGet(`${UTXO_PREFIX}:${ref}`, "addr")! as AddressStr;
+            const addr = await getAddrOfRef( ref )! as AddressStr;
             return { ref, addr }
         })
     );
@@ -581,11 +507,11 @@ async function handleClientReqFree( client: Client, req: ClientReqFree ): Promis
 }
 
 async function emitUtxoUtxoFreeEvts(refs: TxOutRefStr[]): Promise<void> {
-    // const redis = getRedisClient();
+    // // const redis = getRedisClient();
 
     const datas = await Promise.all(
         refs.map(async ref => {
-            const addr = await redis.hGet(`${UTXO_PREFIX}:${ref}`, "addr")! as AddressStr;
+            const addr = await getAddrOfRef( ref )! as AddressStr;
             return { ref, addr }
         })
     );

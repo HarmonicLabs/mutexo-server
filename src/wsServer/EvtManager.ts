@@ -21,6 +21,11 @@ export type EvtKeyType<EK extends EvtKey> =
     EK extends EvtKey.AddressStr ? AddressStr :
     never;
 
+/**
+ * Manages the subscriptions to an event
+ * 
+ * only used in the wsServer
+ */
 export class EvtManager<EK extends EvtKey>
 {
     readonly clients: Map<EvtKeyType<EK>, Set<Client>>;

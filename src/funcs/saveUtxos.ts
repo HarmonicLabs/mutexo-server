@@ -13,7 +13,7 @@ export async function saveTxOut(
     ref: TxOutRefStr
 ): Promise<void>
 {
-    // const redis = getRedisClient();
+    // // const redis = getRedisClient();
     await Promise.all([
 		redis.json.set( `${UTXO_VALUE_PREFIX}:${ref}`, "$", out.value.toJson() as ValueJson ),
         redis.hSet(

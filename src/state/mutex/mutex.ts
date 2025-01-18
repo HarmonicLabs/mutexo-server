@@ -1,5 +1,5 @@
 import { TxOutRefStr } from "@harmoniclabs/cardano-ledger-ts";
-import { Client } from "../../Client";
+import { Client } from "../../wsServer/Client";
 
 const maxLockTime = 30_000; // 30 seconds
 

@@ -138,7 +138,7 @@ async function parseBlock( blockData: Uint8Array ): Promise<void>
 
 async function removeImmutableBlock(): Promise<void>
 {
-    const redis = getRedisClient();
+    // const redis = getRedisClient();
 
     const actualLength = await redis.lLen( BLOCKS_QUEQUE_KEY );
 

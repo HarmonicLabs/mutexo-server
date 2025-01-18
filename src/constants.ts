@@ -10,7 +10,7 @@ export const UTXO_VALUE_PREFIX   = "mutexo:val";
 
 // "lbrl" -> leaking bucket rate limit
 export const LEAKING_BUCKET_BY_IP_PREFIX = "mutexo:lbrl";
-export const LEAKING_BUCKET_TIME = 60_000;
+export const LEAKING_BUCKET_TIME = 30_000;
 export const LEAKING_BUCKET_MAX_CAPACITY = 20;
 
 export const TEMP_AUTH_TOKEN_PREFIX = "auth:temp_token";

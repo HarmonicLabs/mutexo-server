@@ -1,35 +1,24 @@
 import { AddrFilter, ClientReq, ClientReqFree, ClientReqLock, ClientSub, ClientUnsub, Close, MutexoError, MutexFailure, MutexoFree, MutexoInput, MutexoLock, MutexoOutput, MutexSuccess, UtxoFilter, MutexOp, SubSuccess } from "@harmoniclabs/mutexo-messages";
-import { setWsClientIp, getWsClientIp } from "../wsServer/clientProps";
-import { LEAKING_BUCKET_BY_IP_PREFIX, LEAKING_BUCKET_MAX_CAPACITY, LEAKING_BUCKET_TIME, TEMP_AUTH_TOKEN_PREFIX, UTXO_PREFIX } from "../constants";
+import { setWsClientIp } from "../wsServer/clientProps";
 import { Address, AddressStr, forceTxOutRef, forceTxOutRefStr, TxOut, TxOutRefStr } from "@harmoniclabs/cardano-ledger-ts";
 import { parseClientReq } from "@harmoniclabs/mutexo-messages/dist/utils/parsers";
 import { eventIndexToMutexoEventName } from "../utils/mutexEvents";
 import { fromHex, toHex } from "@harmoniclabs/uint8array-utils";
 import { getClientIp as getClientIpFromReq } from "request-ip";
-// import { isFollowingAddr } from "../redis/isFollowingAddr";
-import { getRedisClient } from "../redis/getRedisClient";
 import { RawData, WebSocket, WebSocketServer } from "ws";
-import { tryGetBlockInfos } from "../types/BlockInfos";
 import { MutexoServerEvent } from "../wsServer/events";
 import { isObject } from "@harmoniclabs/obj-utils";
 import { logger } from "../utils/Logger";
 import { parentPort, workerData } from "node:worker_threads";
-import { wsAuthIpRateLimit } from "../middlewares/ip";
 import { unrawData } from "../utils/unrawData";
-import { sign, verify } from "jsonwebtoken";
-import { webcrypto } from "node:crypto";
+import { verify } from "jsonwebtoken";
 import { URL } from "node:url";
-import express from "express";
-import http from "http";
-import { setupWorker } from "../setupWorker";
 import { addrFree, addrLock, addrOut, addrSpent, utxoFree, utxoLock, utxoSpent } from "../state/events";
 import { Client } from "../wsServer/Client";
 import { Mutex } from "../state/mutex/mutex";
 import { MutexoServerConfig } from "../MutexoServerConfig/MutexoServerConfig";
 import { IMutexoInputJson, IMutexoOutputJson } from "./data";
 import { MainWorkerQuery } from "./MainWorkerQuery";
-
-setupWorker( workerData );
 
 const cfg = workerData as MutexoServerConfig;
 const cfgAddrs = new Set( cfg.addrs );
@@ -208,13 +197,6 @@ async function terminateClient( client: Client )
 {
     unsubAll( client );
 
-    // -- super duper iper illegal --
-    // (test purposes only)
-    // const ip = getWsClientIp( client );
-    // // const redis = getRedisClient();
-    // redis.del(`${LEAKING_BUCKET_BY_IP_PREFIX}:${ip}`);
-    // ------------------------------
-
     client.terminate();
     delete (client.ws as any).MUTEXO_CLIENT_INSTANCE;
 }
@@ -379,7 +361,6 @@ async function handleClientUnsub( client: Client, req: ClientUnsub ): Promise<vo
         else if( filter instanceof UtxoFilter ) 
         {
             const ref = filter.utxoRef.toString();
-            // // const redis = getRedisClient();
 
             const addr = await getAddrOfRef( ref )
                                             
@@ -452,7 +433,6 @@ async function handleClientReqLock( client: Client, req: ClientReqLock ): Promis
 }
 
 async function emitUtxoLockEvts(refs: TxOutRefStr[]): Promise<void> {
-    // // const redis = getRedisClient();
 
     const datas = await Promise.all(
         refs.map(async ref => {
@@ -507,7 +487,6 @@ async function handleClientReqFree( client: Client, req: ClientReqFree ): Promis
 }
 
 async function emitUtxoUtxoFreeEvts(refs: TxOutRefStr[]): Promise<void> {
-    // // const redis = getRedisClient();
 
     const datas = await Promise.all(
         refs.map(async ref => {

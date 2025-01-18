@@ -1,7 +1,7 @@
 import { TxOutRefStr, AddressStr, TxOut, TxOutRef, UTxO, Address } from "@harmoniclabs/cardano-ledger-ts";
 import { BlockInfosWithHash, TxIO } from "../../types/BlockInfos";
 import { logger } from "../../utils/Logger";
-import { ResolvedSerializedUtxo } from "../../workers/MainWorkerQuery";
+import { ResolvedSerializedUtxo } from "../../wss/MainWorkerQuery";
 
 export interface UtxoSetEntry {
     bytes: Uint8Array,
@@ -117,10 +117,8 @@ export class Chain
 
             this.revertTxsOuts( outs );
             this.revertTxsIns( ins );
-                
             // mutex is managed in the websocket server
             // we are rolling back, so the utxo is free to be used, no matter if a user blocked or not
-            // redis.del( ins.map( ref => `${UTXO_PREFIX}:${ref}:${UTXO_LOCK_SET_POSTFIX}` ) )
         }
     }
 

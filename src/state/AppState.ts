@@ -3,7 +3,7 @@ import { Chain } from "./data/Chain";
 import { LeakingBucket } from "./rate-limit/LeakingBucket";
 import { sign } from "jsonwebtoken";
 import { Worker } from "node:worker_threads";
-import { isGetAuthTokenSecretQueryRequest, isIncrLeakingBucketQueryRequest, isResolveUtxosQueryRequest, QueryRequest } from "../workers/MainWorkerQuery";
+import { isGetAuthTokenSecretQueryRequest, isIncrLeakingBucketQueryRequest, isResolveUtxosQueryRequest, QueryRequest } from "../wss/MainWorkerQuery";
 
 export class AppState
 {

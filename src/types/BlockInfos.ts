@@ -1,10 +1,9 @@
 import { TxOutRefStr } from "@harmoniclabs/cardano-ledger-ts";
 import { isTxOutRefStr } from "../utils/isTxOutRefStr";
-import { RedisJSONObject } from "./UTxOWithStatus";
 import { isObject } from "@harmoniclabs/obj-utils";
 import { isHex } from "../utils/isHex";
 
-export interface TxIO extends RedisJSONObject {
+export interface TxIO {
     ins : TxOutRefStr[],
     outs: TxOutRefStr[]
 }
@@ -20,7 +19,7 @@ export function isTxIO( stuff: any ): stuff is TxIO
     );
 }
 
-export interface BlockInfos extends RedisJSONObject {
+export interface BlockInfos{
     slot: number,
     prev: string,
     txs: TxIO[]

@@ -1,6 +1,6 @@
 import { readFile } from "node:fs/promises";
 import { MutexoServerCliArgs, MutexoServerConfig } from "./MutexoServerConfig";
-import { defaultAddrs, defaultIngoreDotenv, defaultNetwork, defaultRedisUrl, defaultWssPort } from "../cli/defaults";
+import { defaultAddrs, defaultIngoreDotenv, defaultNetwork, defaultWssPort } from "../cli/defaults";
 import { AddressStr } from "@harmoniclabs/cardano-ledger-ts";
 import { isAddrStr } from "../utils/isAddrStr";
 import { existsSync } from "node:fs";
@@ -54,20 +54,13 @@ export async function parseCliArgs( args: Partial<MutexoServerCliArgs> ): Promis
     return {
         ignoreEnv,
         port: isTypeOrElse(
-            args.redisUrl, "number",
+            args.port, "number",
             isTypeOrElse(
-                jsonCfg.redisUrl, "number",
+                jsonCfg.port, "number",
                 defaultWssPort
             )
         ),
         nodeSocketPath,
-        redisUrl: isTypeOrElse(
-            args.redisUrl, "string",
-            isTypeOrElse(
-                jsonCfg.redisUrl, "string",
-                defaultRedisUrl
-            )
-        ),
         network,
         addrs
     };

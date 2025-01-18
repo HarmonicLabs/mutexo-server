@@ -3,7 +3,7 @@ import { CborArray, CborBytes, CborMap, CborUInt } from "@harmoniclabs/cbor";
 import { LocalStateQueryClient } from "@harmoniclabs/ouroboros-miniprotocols-ts";
 import { lexCompare } from "@harmoniclabs/uint8array-utils";
 
-export async function queryAddrsUtxos( client: LocalStateQueryClient, addrs: Address[] ): Promise<UTxO[]>
+async function queryAddrsUtxos( client: LocalStateQueryClient, addrs: Address[] ): Promise<UTxO[]>
 {
     const query = new CborArray([
         new CborUInt( 0 ),

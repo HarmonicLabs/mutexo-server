@@ -1,12 +1,10 @@
 import { ChainSyncClient, LocalStateQueryClient, Multiplexer } from "@harmoniclabs/ouroboros-miniprotocols-ts";
 import { Cbor, CborArray, CborBytes, CborObj, CborTag, CborUInt, LazyCborArray, LazyCborObj } from "@harmoniclabs/cbor";
 import { Address, AddressStr, TxBody, TxOut, TxOutRefStr } from "@harmoniclabs/cardano-ledger-ts";
-import { queryAddrsUtxos } from "./funcs/queryAddrsUtxos";
 import { syncAndAcquire } from "./funcs/syncAndAcquire";
 import { toHex } from "@harmoniclabs/uint8array-utils";
 import { filterInplace } from "./utils/filterInplace";
 import { isObject } from "@harmoniclabs/obj-utils";
-import { saveUtxos } from "./funcs/saveUtxos";
 import { isAddrStr } from "./utils/isAddrStr";
 import { Worker } from "node:worker_threads";
 import { connect } from "net";
@@ -14,18 +12,18 @@ import { MutexoServerConfig } from "./MutexoServerConfig/MutexoServerConfig";
 import { Chain } from "./state/data/Chain";
 import { createHash } from "blake2";
 import { BlockInfos, TxIO } from "./types/BlockInfos";
-import { IMutexoInputJson, IMutexoOutputJson } from "./workers/data";
+import { IMutexoInputJson, IMutexoOutputJson } from "./wss/data";
 import express from "express";
 import { wsAuthIpRateLimit } from "./middlewares/ip";
 import { getClientIp as getClientIpFromReq } from "request-ip";
 import { logger } from "./utils/Logger";
-import { isQueryMessageName } from "./workers/MainWorkerQuery";
+import { isQueryMessageName } from "./wss/MainWorkerQuery";
 import { AppState } from "./state/AppState";
 
 
 export async function main( cfg: MutexoServerConfig )
 {
-    const webSocketServer = new Worker(__dirname + "/workers/webSocketServer.js", { workerData: cfg });
+    const webSocketServer = new Worker(__dirname + "/wss/webSocketServer.js", { workerData: cfg });
     
     const app = express();
     app.use( express.json() );
@@ -34,7 +32,6 @@ export async function main( cfg: MutexoServerConfig )
     const state = new AppState();
 
     app.get("/wsAuth", wsAuthIpRateLimit, async ( req, res ) => {
-        // // const redis = getRedisClient();
         const ip = getClientIpFromReq( req );
         if(typeof ip !== "string")
         {
@@ -82,23 +79,6 @@ export async function main( cfg: MutexoServerConfig )
         {
             state.handleQueryMessage( msg, webSocketServer );
             return;
-        }
-        if( msg.type === "queryAddrsUtxos" )
-        {
-            if( !Array.isArray( msg.data ) ) return;
-            
-            let addrs = msg.data as AddressStr[];
-            filterInplace( addrs, isAddrStr );
-
-            if( addrs.length === 0 ) return;
-
-            await lsqClient.acquire( tip );
-            await saveUtxos(
-                await queryAddrsUtxos(
-                    lsqClient, 
-                    addrs.map( addr => Address.fromString( addr ) )
-                )
-            );
         }
     })
 
@@ -259,7 +239,7 @@ function saveBlockAndEmitEvents( state: AppState, blockData: Uint8Array, wssWork
         }
 
         blockInfos.txs[ tx_i ] = {
-            hash: hashStr,
+            // hash: hashStr,
             ins,
             outs
         };

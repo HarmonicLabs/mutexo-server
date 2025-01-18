@@ -1,7 +1,7 @@
 import { execSync } from "child_process";
 import { Command } from "commander";
 import { config } from "dotenv";
-import { defaultConfigPath, defaultRedisUrl, defaultTxs, defaultTest, defaultIngoreDotenv, defaultAddrs, defaultWssPort, defaultNetwork } from "./defaults";
+import { defaultConfigPath, defaultIngoreDotenv, defaultWssPort, defaultNetwork } from "./defaults";
 import { isAddrStr } from "../utils/isAddrStr";
 import { parseCliArgs } from "../MutexoServerConfig/parseCliArgs";
 import { main } from "../main";
@@ -73,11 +73,6 @@ program
         "path to the cardano-node socket"
     )
     .option(
-        "-ru, --redis-url <string>",
-        "redis url to access the database as described at https://github.com/redis/node-redis/blob/master/docs/client-configuration.md (default: "
-        + defaultRedisUrl + ")"
-    )
-    .option(
         "-p, --port <number>",
         "port for the WebSocket server to listen to",
         defaultWssPort.toString()
@@ -91,12 +86,6 @@ program
 
         const cfg = await parseCliArgs( options );
         main( cfg );
-        /*
-        execSync(
-            `node ./dist/src/index.js ${path} false undefined ${options.redisUrl ?? defaultRedisUrl}`,
-            { stdio: "inherit" }
-        );
-        //*/
     });
 
 program.parse( process.argv );

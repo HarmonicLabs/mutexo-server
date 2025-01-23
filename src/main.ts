@@ -12,24 +12,24 @@ import { MutexoServerConfig } from "./MutexoServerConfig/MutexoServerConfig";
 import { Chain } from "./state/data/Chain";
 import { createHash } from "blake2";
 import { BlockInfos, TxIO } from "./types/BlockInfos";
-import { IMutexoInputJson, IMutexoOutputJson } from "./wss/data";
+import { IMutexoInputJson, IMutexoOutputJson } from "./wssWorker/data";
 import express from "express";
 import { wsAuthIpRateLimit } from "./middlewares/ip";
 import { getClientIp as getClientIpFromReq } from "request-ip";
 import { logger } from "./utils/Logger";
-import { isQueryMessageName } from "./wss/MainWorkerQuery";
+import { isQueryMessageName } from "./wssWorker/MainWorkerQuery";
 import { AppState } from "./state/AppState";
 
 
 export async function main( cfg: MutexoServerConfig )
 {
-    const webSocketServer = new Worker(__dirname + "/wss/webSocketServer.js", { workerData: cfg });
+    const webSocketServer = new Worker(__dirname + "/wssWorker/webSocketServer.js", { workerData: cfg });
     
     const app = express();
     app.use( express.json() );
     app.set("trust proxy", 1);
 
-    const state = new AppState();
+    const state = new AppState( cfg, [ webSocketServer ] );
 
     app.get("/wsAuth", wsAuthIpRateLimit, async ( req, res ) => {
         const ip = getClientIpFromReq( req );
@@ -45,7 +45,7 @@ export async function main( cfg: MutexoServerConfig )
     });
 
     app.listen( cfg.port, () => {
-        logger.info(`Mutexo server listening at http://localhost:${cfg.port}`);
+        logger.info(`Mutexo http server listening at http://localhost:${cfg.port}`);
     });
 
     process.on("beforeExit", () => {
@@ -211,12 +211,11 @@ function saveBlockAndEmitEvents( state: AppState, blockData: Uint8Array, wssWork
             const ref = i.utxoRef.toString();
             ins.push( ref );
 
-            const inputBytes = chain.spend( ref );
-            if( !inputBytes ) continue;
-            const input = TxOut.fromCbor( inputBytes );
+            const inputEntry = chain.spend( ref );
+            if( !inputEntry ) continue;
 
             emitInputEvent( wssWorker, {
-                addr: input.address.toString(),
+                addr: inputEntry.addr.toString(),
                 ref,
                 txHash: hashStr
             });
@@ -227,10 +226,12 @@ function saveBlockAndEmitEvents( state: AppState, blockData: Uint8Array, wssWork
         {
             const out = tx.outputs[i];
             const ref = `${hashStr}#${i}` as TxOutRefStr;
-            outs.push( ref );
 
-            chain.saveTxOut( out, ref );
             const addr = out.address.toString();
+            if( !state.isFollowing( addr ) ) continue;
+
+            outs.push( ref );
+            chain.saveTxOut( out, ref, addr );
 
             emitOutputEvent( wssWorker, {
                 addr,

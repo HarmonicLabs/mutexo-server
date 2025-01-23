@@ -1,53 +1,115 @@
 import { TxOutRefStr } from "@harmoniclabs/cardano-ledger-ts";
 import { Client } from "../../wsServer/Client";
+import { isObject } from "@harmoniclabs/obj-utils";
+import { Chain } from "../data/Chain";
 
 const maxLockTime = 30_000; // 30 seconds
+
+export interface LockerInfo {
+    clientIp: string;
+    serverPort: number;
+}
+
+function isLockerInfo( x: any ): x is LockerInfo
+{
+    return (
+        isObject( x ) &&
+        typeof x.clientIp === "string" &&
+        typeof x.serverPort === "number" &&
+        x.serverPort === (x.serverPort >>> 0)
+    );
+}
+
+function eqLockerInfo( a: any, b: any ): boolean
+{
+    if(!( isLockerInfo( a ) && isLockerInfo( b ) )) return false;
+
+    return (
+        a.clientIp === b.clientIp &&
+        a.serverPort === b.serverPort
+    );
+}
 
 // singleton
 export class Mutex
 {
-    private constructor() {}
+    constructor(
+        readonly chain: Chain
+    ) {}
 
-    static readonly blockers = new Map<TxOutRefStr, Client>();
+    readonly blockers = new Map<TxOutRefStr, LockerInfo>();
 
     /**
-     * 
-     * @returns {boolean} `true` if the client locked the utxos, `false` if the utxo was already locked
+     * @returns {TxOutRefStr[]} the utxos that were locked
      */
-    static lock( ref: TxOutRefStr, client: Client ): boolean
+    lock( client: LockerInfo, refs: TxOutRefStr[], required: number ): TxOutRefStr[]
     {
-        if(!( client instanceof Client )) return false;
+        if(!isLockerInfo( client )) return [];
 
-        const currentBlocker = Mutex.blockers.get( ref );
-        if( currentBlocker === client ) return true;
-        if( currentBlocker instanceof Client ) return false;
-        
-        // lock for the first time
-        Mutex.blockers.set( ref, client );
-        client.lockedUtxos.add( ref );
+        const lockedUtxos: TxOutRefStr[] = [];
+        for( const ref of refs )
+        {
+            if( !this.chain.canMutex( ref ) ) continue;
 
-        setTimeout(() => Mutex.unlock( client, ref ), maxLockTime);
-        return true;
+            const currentLocker = this.blockers.get( ref );
+            if( isLockerInfo( currentLocker ) ) continue; // someone is already locking the utxo
+
+            // utxo is free, try to lock it
+            lockedUtxos.push( ref );
+            this.blockers.set( ref, client );
+
+            if( lockedUtxos.length >= required ) break; // we are good
+        }
+
+        if( lockedUtxos.length < required )
+        {
+            // required utxos not met
+            // revert the locks
+            for( const ref of lockedUtxos )
+            {
+                this.blockers.delete( ref );
+            }
+            return [];
+        }
+        else
+        {
+            setTimeout( unlockCallback.bind({ self: this, client, lockedUtxos }), maxLockTime);
+        }
+
+        return lockedUtxos;
     }
 
     /**
      * 
      * @returns {boolean} `true` if the utxo was freed (only current locker), `false` if the utxo was already unlocked
      */
-    static unlock( client: Client, ref: TxOutRefStr ): boolean
+    _unlock( client: LockerInfo, ref: TxOutRefStr ): boolean
     {
         // only the current locker can unlock the utxo
-        if( !Mutex.isCurrentLocker( client, ref ) ) return false;
+        if( !this.isCurrentLocker( client, ref ) ) return false;
 
-        this.blockers.delete( ref );
-        client.lockedUtxos.delete( ref );
-        return true;
+        // client.lockedUtxos.delete( ref );
+        return this.blockers.delete( ref );
     }
 
-    static isCurrentLocker( client: Client, ref: TxOutRefStr ): boolean
+    unlock( client: LockerInfo, refs: TxOutRefStr[] ): TxOutRefStr[]
     {
-        if(!( client instanceof Client )) return false;
-
-        return Mutex.blockers.get( ref ) === client;
+        return refs.filter( ref => this._unlock( client, ref ) );
     }
+
+    isCurrentLocker( client: LockerInfo, ref: TxOutRefStr ): boolean
+    {
+        return eqLockerInfo( this.blockers.get( ref ), client );
+    }
+}
+
+interface UnlockCallbackEnv {
+    self: Mutex;
+    client: LockerInfo;
+    lockedUtxos: TxOutRefStr[];
+}
+function unlockCallback( this: UnlockCallbackEnv )
+{
+    const { self, client, lockedUtxos } = this;
+    self.unlock( client, lockedUtxos );
 }

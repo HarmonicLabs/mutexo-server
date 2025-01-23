@@ -1,17 +1,23 @@
-import { TxOutRefStr } from "@harmoniclabs/cardano-ledger-ts";
+import { Tx, TxOutRefStr } from "@harmoniclabs/cardano-ledger-ts";
 import { MessagePort } from "node:worker_threads";
+import { LockerInfo } from "../state/mutex/mutex";
+import { Client } from "../wsServer/Client";
 
 export type MainWorkerQueryName
     = "incrementLeakingBucket"
     | "getAuthTokenSecret"
-    | "resolveUtxos";
+    | "resolveUtxos"
+    | "lock"
+    | "unlock";
 
 export function isQueryMessageName( str: string ): str is MainWorkerQueryName
 {
     return (
         str === "incrementLeakingBucket"    ||
         str === "getAuthTokenSecret"        ||
-        str === "resolveUtxos"
+        str === "resolveUtxos"              ||
+        str === "lock"                      ||
+        str === "unlock"
     ); 
 }
 
@@ -36,10 +42,22 @@ export function isResolveUtxosQueryRequest( obj: any ): obj is QueryRequest<"res
     return obj.type === "resolveUtxos";
 }
 
+export function isLockQueryRequest( obj: any ): obj is QueryRequest<"lock">
+{
+    return obj.type === "lock";
+}
+
+export function isUnlockQueryRequest( obj: any ): obj is QueryRequest<"unlock">
+{
+    return obj.type === "unlock";
+}
+
 export type QueryArgsOf<Name extends MainWorkerQueryName> =
     Name extends "incrementLeakingBucket" ? [ ip: string ] :
     Name extends "getAuthTokenSecret" ? [ token: string ] :
     Name extends "resolveUtxos" ? [ refs: TxOutRefStr[] ] :
+    Name extends "lock" ? [ client: LockerInfo, refs: TxOutRefStr[], required: number ] :
+    Name extends "unlock" ? [ client: LockerInfo, refs: TxOutRefStr[] ] :
     any[];
     
 export interface QueryResultMessageData<T = any> {
@@ -107,6 +125,16 @@ export class MainWorkerQuery
     resolveUtxos( refs: TxOutRefStr[] ): Promise<ResolvedSerializedUtxo[]>
     {
         return this._send( "resolveUtxos", [ refs ] );
+    }
+
+    lock( client: LockerInfo, refs: TxOutRefStr[], required: number ): Promise<TxOutRefStr[]>
+    {
+        return this._send( "lock", [ client, refs, required ] );
+    }
+
+    unlock( client: LockerInfo, refs: TxOutRefStr[] ): Promise<TxOutRefStr[]>
+    {
+        return this._send( "unlock", [ client, refs ] );
     }
 }
 

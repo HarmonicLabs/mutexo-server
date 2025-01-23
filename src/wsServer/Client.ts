@@ -2,6 +2,7 @@ import { AddressStr, TxOutRefStr } from "@harmoniclabs/cardano-ledger-ts";
 import { ClientSubs, createClientSubs } from "./ClientSubs";
 import { getWsClientIp } from "./clientProps";
 import type { WebSocket } from "ws";
+import { LockerInfo } from "../state/mutex/mutex";
 
 export class Client
     implements ClientSubs
@@ -19,7 +20,7 @@ export class Client
 
     constructor(
         readonly ws: WebSocket,
-        public ip: string,
+        readonly ip: string
     )
     {
         const {
@@ -41,6 +42,14 @@ export class Client
         this.addrLock = addrLock;
         this.addrSpent = addrSpent;
         this.addrOut = addrOut;
+    }
+
+    getLockerInfo( port: number ): LockerInfo
+    {
+        return {
+            clientIp: this.ip,
+            serverPort: port
+        };
     }
 
     static fromWs( ws: WebSocket ): Client

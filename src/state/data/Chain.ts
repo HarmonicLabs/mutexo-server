@@ -1,11 +1,13 @@
 import { TxOutRefStr, AddressStr, TxOut, TxOutRef, UTxO, Address } from "@harmoniclabs/cardano-ledger-ts";
 import { BlockInfosWithHash, TxIO } from "../../types/BlockInfos";
 import { logger } from "../../utils/Logger";
-import { ResolvedSerializedUtxo } from "../../wss/MainWorkerQuery";
+import { ResolvedSerializedUtxo } from "../../wssWorker/MainWorkerQuery";
+import { SharedAddrStr } from "../../utils/SharedAddrStr";
 
 export interface UtxoSetEntry {
     bytes: Uint8Array,
-    isSpent: boolean
+    isSpent: boolean,
+    addr: SharedAddrStr
 }
 
 // singleton
@@ -23,9 +25,20 @@ export class Chain
     /**
      * allows to quickly find the utxos of an address
      */
-    readonly addrUtxoIndex = new Map<AddressStr, Set<TxOutRefStr>>();
+    readonly addrUtxoIndex = new Map<SharedAddrStr, Set<TxOutRefStr>>();
 
     tip: string = "";
+
+    /**
+     * @returns {boolean} `true` if the utxo exists, is followed, and has not been spent;
+     * `false` otherwise
+     */
+    canMutex( ref: TxOutRefStr ): boolean
+    {
+        const entry = this.utxoSet.get( ref );
+        if( !entry ) return false;
+        return !entry.isSpent;
+    }
 
     resolveUtxo( ref: TxOutRefStr ): ResolvedSerializedUtxo
     {
@@ -41,9 +54,11 @@ export class Chain
         return refs.map( ref => self.resolveUtxo(ref) );
     }
 
-    getAddrUtxos( addr: AddressStr | Address ): Set<TxOutRefStr>
+    getAddrUtxos( _addr: AddressStr | SharedAddrStr ): Set<TxOutRefStr>
     {
-        if( addr instanceof Address ) addr = addr.toString();
+        const addr = _addr instanceof SharedAddrStr ? _addr : SharedAddrStr.getIfExists( _addr );
+        if( !addr ) return new Set();
+        
         let utxos = this.addrUtxoIndex.get( addr )
         if( !utxos )
         {
@@ -83,28 +98,30 @@ export class Chain
         return revertedBlocks;
     }
 
-    saveTxOut( out: TxOut, ref: TxOutRefStr ): void
+    saveTxOut( out: TxOut, ref: TxOutRefStr, address?: AddressStr ): void
     {
         const bytes = out.toCbor().toBuffer();
-        this.utxoSet.set( ref, { bytes, isSpent: false } );
+        const addr = SharedAddrStr.getIfExists( address ?? out.address.toString() );
+        if( !addr ) return;
 
-        this.getAddrUtxos( out.address ).add( ref );
+        this.utxoSet.set( ref, { bytes, isSpent: false, addr } );
+        this.getAddrUtxos( addr ).add( ref );
     }
 
-    saveUtxos( utxos: UTxO[] ): void
-    {
-        for( const u of utxos )
-        {
-            this.saveTxOut( u.resolved, u.utxoRef.toString() );
-        }
-    }
+    // saveUtxos( utxos: UTxO[] ): void
+    // {
+    //     for( const u of utxos )
+    //     {
+    //         this.saveTxOut( u.resolved, u.utxoRef.toString() );
+    //     }
+    // }
 
-    spend( ref: TxOutRefStr ): Uint8Array | undefined
+    spend( ref: TxOutRefStr ): UtxoSetEntry | undefined
     {
         const entry = this.utxoSet.get( ref );
-        if( !entry ) return;
+        if( !entry ) return undefined;
         entry.isSpent = true;
-        return entry.bytes;
+        return entry;
     }
 
     private revertTxs( txs: TxIO[] ): void
@@ -139,7 +156,9 @@ export class Chain
             // this.utxoSet.delete( out );
             entry.isSpent = true;
     
-            const addr = txOut.address.toString();
+            const addr = SharedAddrStr.getIfExists( txOut.address.toString() );
+            if( !addr ) continue;
+
             const addrUtxos = this.addrUtxoIndex.get( addr );
             if( !addrUtxos )
             {
@@ -160,7 +179,9 @@ export class Chain
             const txOut = TxOut.fromCbor( entry.bytes );
             entry.isSpent = false;
     
-            const addr = txOut.address.toString();
+            const addr = SharedAddrStr.getIfExists( txOut.address.toString() );
+            if( !addr ) continue;
+
             let addrUtxos = this.addrUtxoIndex.get( addr );
             if( !addrUtxos )
             {

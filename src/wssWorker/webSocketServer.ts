@@ -1,14 +1,10 @@
-import { AddrFilter, ClientReq, ClientReqFree, ClientReqLock, ClientSub, ClientUnsub, Close, MutexoError, MutexFailure, MutexoFree, MutexoInput, MutexoLock, MutexoOutput, MutexSuccess, UtxoFilter, MutexOp, SubSuccess } from "@harmoniclabs/mutexo-messages";
+import { AddrFilter, ClientReq, ClientReqFree, ClientReqLock, ClientSub, ClientUnsub, Close, MutexoError, MutexFailure, MutexoFree, MutexoInput, MutexoLock, MutexoOutput, MutexSuccess, UtxoFilter, MutexOp, SubSuccess, clientReqFromCborObj, mutexoEventIndexToName, MutexoEventIndex } from "@harmoniclabs/mutexo-messages";
 import { setWsClientIp } from "../wsServer/clientProps";
 import { Address, AddressStr, forceTxOutRef, forceTxOutRefStr, TxOut, TxOutRefStr } from "@harmoniclabs/cardano-ledger-ts";
-import { parseClientReq } from "@harmoniclabs/mutexo-messages/dist/utils/parsers";
-import { eventIndexToMutexoEventName } from "../utils/mutexEvents";
 import { fromHex, toHex } from "@harmoniclabs/uint8array-utils";
 import { getClientIp as getClientIpFromReq } from "request-ip";
 import { RawData, WebSocket, WebSocketServer } from "ws";
-import { MutexoServerEvent } from "../wsServer/events";
 import { isObject } from "@harmoniclabs/obj-utils";
-import { logger } from "../utils/Logger";
 import { parentPort, workerData } from "node:worker_threads";
 import { unrawData } from "../utils/unrawData";
 import { verify } from "jsonwebtoken";
@@ -19,9 +15,12 @@ import { Mutex } from "../state/mutex/mutex";
 import { MutexoServerConfig } from "../MutexoServerConfig/MutexoServerConfig";
 import { IMutexoInputJson, IMutexoOutputJson } from "./data";
 import { MainWorkerQuery } from "./MainWorkerQuery";
+import { Cbor } from "@harmoniclabs/cbor";
+import { MutexEventInfos } from "../wsServer/MutexEventInfos";
 
 const cfg = workerData as MutexoServerConfig;
 const cfgAddrs = new Set( cfg.addrs );
+const port = cfg.port;
 
 function isFollowingAddr( addr: AddressStr ): boolean
 {
@@ -45,7 +44,9 @@ const unknownUnsubEvtByUTxORefMsg = new MutexoError({ errorCode: 9 }).toCbor().t
 const unknownUnsubEvtMsg = new MutexoError({ errorCode: 10 }).toCbor().toBuffer();
 const unknownSubFilter = new MutexoError({ errorCode: 11 }).toCbor().toBuffer();
 
-const wsServer = new WebSocketServer({ path: "/events", maxPayload: 512 });
+const maxPayload = 512;
+
+const wsServer = new WebSocketServer({ path: "/events", maxPayload, port });
 
 const pingInterval = setInterval(
     () => {
@@ -180,6 +181,18 @@ parentPort?.on("message", async ( msg ) => {
         addrOut.emitToKey( data.addr, evt );
         return;
     }
+    if( msg.type === "lock" )
+    {
+        const mutexInfos = msg.data as MutexEventInfos[];
+        emitUtxoLockEvts( mutexInfos );
+        return;
+    }
+    if( msg.type === "free" )
+    {
+        const mutexInfos = msg.data as MutexEventInfos[];
+        emitUtxoUtxoFreeEvts( mutexInfos );
+        return;
+    }
 });
 
 function unsubAll(client: Client) {
@@ -222,9 +235,9 @@ async function handleClientMessage( this: WebSocket, data: RawData ): Promise<vo
 
     const bytes = unrawData( data );
     // NO big messages
-    if( bytes.length > 512 ) return;
+    if( bytes.length > maxPayload ) return;
 
-    const req: ClientReq = parseClientReq( bytes );
+    const req: ClientReq = clientReqFromCborObj( Cbor.parse( bytes ) );
 
     if      ( req instanceof Close )            return terminateClient( client );
     else if ( req instanceof ClientSub )        return handleClientSub( client, req );
@@ -237,12 +250,10 @@ async function handleClientMessage( this: WebSocket, data: RawData ): Promise<vo
 
 async function handleClientSub( client: Client, req: ClientSub ): Promise<void> 
 {        
-    const { id, eventType, filters } = req;
+    const { id, chainEventIndex, filters } = req;
 
     for( const filter of filters ) 
     {
-        const evtName = eventIndexToMutexoEventName( eventType );
-
         if( filter instanceof AddrFilter ) 
         {
             const addrStr = filter.addr.toString();
@@ -254,25 +265,26 @@ async function handleClientSub( client: Client, req: ClientSub ): Promise<void>
                 return;
             }
 
-            switch( evtName ) 
+            switch( chainEventIndex ) 
             {
-                case MutexoServerEvent.Lock: {
+                case MutexoEventIndex.lock: {
                     addrLock.sub( addrStr, client );
                     break;
                 }
-                case MutexoServerEvent.Free: {
+                case MutexoEventIndex.free: {
                     addrFree.sub( addrStr, client );
                     break;
                 }
-                case MutexoServerEvent.Input: {
+                case MutexoEventIndex.input: {
                     addrSpent.sub( addrStr, client );
                     break;
                 }
-                case MutexoServerEvent.Output: {
+                case MutexoEventIndex.output: {
                     addrOut.sub( addrStr, client );
                     break;
                 }
-                default: {                        
+                default: {                    
+                    // chainEventIndex; // never    
                     client.send( unknownSubEvtByAddrMsg );
                     return;
                 }
@@ -290,19 +302,23 @@ async function handleClientSub( client: Client, req: ClientSub ): Promise<void>
                 return;
             }
 
-            switch( evtName ) 
+            switch( chainEventIndex ) 
             {
-                case MutexoServerEvent.Lock:
+                case MutexoEventIndex.lock: {
                     utxoLock.sub( ref, client );
                     break;
-                case MutexoServerEvent.Free:
+                }
+                case MutexoEventIndex.free: {
                     utxoFree.sub( ref, client );
                     break;
-                case MutexoServerEvent.Input:
+                }
+                case MutexoEventIndex.input: {
                     utxoSpent.sub( ref, client );
                     break;
-                case MutexoServerEvent.Output:
+                }
+                case MutexoEventIndex.output:
                 default:
+                    // chainEventIndex; // output (cannot subscribe by ref)
                     client.send( unknownSubEvtByUTxORefMsg );
                     return;
             }
@@ -322,12 +338,10 @@ async function handleClientSub( client: Client, req: ClientSub ): Promise<void>
 
 async function handleClientUnsub( client: Client, req: ClientUnsub ): Promise<void> 
 {
-    const { id, eventType, filters } = req;
+    const { id, chainEventIndex, filters } = req;
 
     for( const filter of filters )
     {
-        const evtName = eventIndexToMutexoEventName(eventType);
-
         if( filter instanceof AddrFilter ) 
         {
             const addrStr = filter.addr.toString();
@@ -339,21 +353,22 @@ async function handleClientUnsub( client: Client, req: ClientUnsub ): Promise<vo
                 return;
             }
 
-            switch( evtName ) 
+            switch( chainEventIndex ) 
             {
-                case MutexoServerEvent.Free:
+                case MutexoEventIndex.free:
                     addrLock.sub( addrStr, client );
                     break;
-                case MutexoServerEvent.Lock:
+                case MutexoEventIndex.lock:
                     addrFree.sub( addrStr, client );
                     break;
-                case MutexoServerEvent.Input:
+                case MutexoEventIndex.input:
                     addrSpent.sub( addrStr, client );
                     break;
-                case MutexoServerEvent.Output:
+                case MutexoEventIndex.output:
                     addrOut.sub( addrStr, client );
                     break;
                 default:
+                    // chainEventIndex; // never
                     client.send( unknownUnsubEvtByAddrMsg );
                     return;
             }
@@ -370,19 +385,20 @@ async function handleClientUnsub( client: Client, req: ClientUnsub ): Promise<vo
                 return;
             }
 
-            switch( evtName ) 
+            switch( chainEventIndex ) 
             {
-                case MutexoServerEvent.Lock:
+                case MutexoEventIndex.lock:
                     utxoLock.unsub( ref, client );
                     break;
-                case MutexoServerEvent.Free:
+                case MutexoEventIndex.free:
                     utxoFree.unsub( ref, client );
                     break;
-                case MutexoServerEvent.Input:
+                case MutexoEventIndex.input:
                     utxoSpent.unsub( ref, client );
                     break;
-                case MutexoServerEvent.Output:
+                case MutexoEventIndex.output:
                 default:
+                    // chainEventIndex; // output (cannot subscribe by ref)
                     client.send( unknownUnsubEvtByUTxORefMsg );
                     return;
             }
@@ -402,53 +418,67 @@ async function handleClientUnsub( client: Client, req: ClientUnsub ): Promise<vo
 
 async function handleClientReqLock( client: Client, req: ClientReqLock ): Promise<void> 
 {
-    const { id, utxoRefs, required } = req;
+    const { id, utxoRefs } = req;
 
-    let nLocked = 0
-    const locked = (
-        utxoRefs.map( forceTxOutRefStr )
-        .filter((utxoRef) => {
-            if( nLocked >= required ) return false;
-            const result = Mutex.lock(utxoRef, client);
-            if( result ) nLocked++;
-            return result;
-        })
+    let required = req.required;
+    required = Math.max( 1, required );
+    required = required >>> 0;
+
+    const lockerInfo = { clientIp: client.ip, serverPort: port };
+
+    const locked = await mainWorker.lock(
+        lockerInfo,
+        utxoRefs.map( forceTxOutRefStr ),
+        required
     );
 
     if( locked.length < required )
     {
-        for( const ref of locked ) Mutex.unlock( client, ref );
+        // the main worker should either unlock all or none
+        // so it should never be the case that we have less than required but some are locked
+        // so `locked.length` should always be 0 (hence this check is redundant)
+        // however, we keep it here just in case I messed up
+        // so we avoid unwanted deadlocks
+        if( locked.length > 0 )
+        {
+            mainWorker.unlock( lockerInfo, locked );
+        }
 
         const msg = new MutexFailure({
             id,
             mutexOp: MutexOp.MutexoLock,
-            utxoRefs: locked.map( forceTxOutRef ),
+            utxoRefs: [] // utxoRefs.map( forceTxOutRef ),
         }).toCbor().toBuffer();
 
         client.send(msg);
         return;
     }
+    // else
 
-    emitUtxoLockEvts( locked );
+    const msg = new MutexSuccess({
+        id,
+        mutexOp: MutexOp.MutexoLock,
+        utxoRefs: locked.map( forceTxOutRef ),
+    }).toCbor().toBuffer();
+
+    client.send(msg);
+    return;
+
+    // main worker will tell us if we need to emit the event
+    // so there is no need to do it here
+    // emitUtxoLockEvts( locked );
 }
 
-async function emitUtxoLockEvts(refs: TxOutRefStr[]): Promise<void> {
-
-    const datas = await Promise.all(
-        refs.map(async ref => {
-            const addr = await getAddrOfRef( ref )! as AddressStr;
-            return { ref, addr }
-        })
-    );
-
-    for (const data of datas) {
+async function emitUtxoLockEvts( datas: MutexEventInfos[]): Promise<void>
+{
+    for (const { ref, addr } of datas) {
         const msg = new MutexoLock({
-            utxoRef: forceTxOutRef(data.ref),
-            addr: Address.fromString(data.addr)
+            utxoRef: forceTxOutRef( ref ),
+            addr: Address.fromString( addr )
         }).toCbor().toBuffer();
 
-        utxoLock.emitToKey(data.ref, msg);
-        addrLock.emitToKey(data.addr, msg);
+        utxoLock.emitToKey( ref, msg );
+        addrLock.emitToKey( addr, msg );
     }
 }
 
@@ -456,11 +486,17 @@ async function handleClientReqFree( client: Client, req: ClientReqFree ): Promis
 {
     const { id, utxoRefs } = req;
 
-    const freed = (
-        utxoRefs.map( forceTxOutRefStr )
-        .filter( ref => Mutex.isCurrentLocker( client, ref ) )
-    );
+    let freed: TxOutRefStr[] = [];
 
+    // only send unlock request if there is actually something to unlock
+    if( utxoRefs.length > 0 )
+    {
+        const lockerInfo = { clientIp: client.ip, serverPort: port };
+    
+        freed = await mainWorker.unlock( lockerInfo, utxoRefs.map( forceTxOutRefStr ) );
+    }
+
+    // 0 free is a failure
     if( freed.length <= 0 ) 
     {        
         const msg = new MutexFailure({
@@ -473,36 +509,30 @@ async function handleClientReqFree( client: Client, req: ClientReqFree ): Promis
         return;
     }
 
-    for( const ref of freed ) Mutex.unlock( client, ref );
-
     const msg = new MutexSuccess({
         id,
         mutexOp: MutexOp.MutexoFree,
-        utxoRefs: freed.map( forceTxOutRef),
+        utxoRefs: freed.map( forceTxOutRef ),
     }).toCbor().toBuffer();
 
     client.send( msg );
-    emitUtxoUtxoFreeEvts( freed );
     return;
+
+    // main worker will tell us if we need to emit the event
+    // so there is no need to do it here
+    // emitUtxoUtxoFreeEvts( freed );
 }
 
-async function emitUtxoUtxoFreeEvts(refs: TxOutRefStr[]): Promise<void> {
-
-    const datas = await Promise.all(
-        refs.map(async ref => {
-            const addr = await getAddrOfRef( ref )! as AddressStr;
-            return { ref, addr }
-        })
-    );
-
-    for (const data of datas) {
+async function emitUtxoUtxoFreeEvts( datas: MutexEventInfos[] ): Promise<void>
+{
+    for (const { ref, addr } of datas) {
         const msg = new MutexoFree({
-            utxoRef: forceTxOutRef(data.ref),
-            addr: Address.fromString(data.addr)
+            utxoRef: forceTxOutRef( ref ),
+            addr: Address.fromString( addr )
         }).toCbor().toBuffer();
 
-        utxoFree.emitToKey(data.ref, msg);
-        addrFree.emitToKey(data.addr, msg);
+        utxoFree.emitToKey( ref, msg );
+        addrFree.emitToKey( addr, msg );
     }
 }
 

@@ -1,3 +1,4 @@
+import { AddressStr } from "@harmoniclabs/cardano-ledger-ts";
 
 export interface MutexoServerCliArgs {
     configPath: string;
@@ -12,6 +13,6 @@ export interface MutexoServerConfig {
     ignoreEnv: boolean;
     network: number;
     nodeSocketPath: string;
-    addrs: string[];
+    addrs: AddressStr[];
     port: number;
 }

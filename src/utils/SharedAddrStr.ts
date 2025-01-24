@@ -41,6 +41,4 @@ export class SharedAddrStr
         addr = addr.toString() as AddressStr;
         sharedAddrs.delete( addr );
     }
-    // use(): SharedAddrStr { (this as any).refs++; return this; }
-    // forget(): void { (this as any).refs--; }
 }

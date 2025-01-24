@@ -469,19 +469,6 @@ async function handleClientReqLock( client: Client, req: ClientReqLock ): Promis
     // emitUtxoLockEvts( locked );
 }
 
-async function emitUtxoLockEvts( datas: MutexEventInfos[]): Promise<void>
-{
-    for (const { ref, addr } of datas) {
-        const msg = new MutexoLock({
-            utxoRef: forceTxOutRef( ref ),
-            addr: Address.fromString( addr )
-        }).toCbor().toBuffer();
-
-        utxoLock.emitToKey( ref, msg );
-        addrLock.emitToKey( addr, msg );
-    }
-}
-
 async function handleClientReqFree( client: Client, req: ClientReqFree ): Promise<void> 
 {
     const { id, utxoRefs } = req;
@@ -521,6 +508,19 @@ async function handleClientReqFree( client: Client, req: ClientReqFree ): Promis
     // main worker will tell us if we need to emit the event
     // so there is no need to do it here
     // emitUtxoUtxoFreeEvts( freed );
+}
+
+async function emitUtxoLockEvts( datas: MutexEventInfos[]): Promise<void>
+{
+    for (const { ref, addr } of datas) {
+        const msg = new MutexoLock({
+            utxoRef: forceTxOutRef( ref ),
+            addr: Address.fromString( addr )
+        }).toCbor().toBuffer();
+
+        utxoLock.emitToKey( ref, msg );
+        addrLock.emitToKey( addr, msg );
+    }
 }
 
 async function emitUtxoUtxoFreeEvts( datas: MutexEventInfos[] ): Promise<void>

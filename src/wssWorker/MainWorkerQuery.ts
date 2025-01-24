@@ -81,8 +81,9 @@ export class MainWorkerQuery
      */
     dispatchEvent({ id, result }: QueryResultMessageData )
     {
-        this.pendingIds.get( id )?.( result );
+        const cb = this.pendingIds.get( id );
         this.pendingIds.delete( id );
+        if( typeof cb === "function" ) cb( result );
     }
 
     private _getId (): number

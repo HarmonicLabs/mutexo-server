@@ -1,6 +1,6 @@
 {
     "name": "@harmoniclabs/mutexo-server",
-    "version": "0.1.0",
+    "version": "0.2.0-dev0",
     "type": "module",
     "bin": {
         "mutexo-server": "./dist/cli/index.js"
@@ -8,7 +8,8 @@
     "scripts": {
         "build": "rm -rf ./dist && tsc --project ./tsconfig.json && tsc-alias -p ./tsconfig.json",
         "start": "npm run build && node dist/cli/index.js",
-        "cli": "npm run build && node dist/cli/index.js ",
+        "cli": "npm run build && npm run cli:light",
+        "cli:light": "node dist/cli/index.js",
         "test": "jest"
     },
     "dependencies": {

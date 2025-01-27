@@ -7,6 +7,7 @@ import { main } from "../main";
 import { readFileSync } from "fs";
 import { CardanoNetworkMagic } from "@harmoniclabs/ouroboros-miniprotocols-ts";
 import { strIsInt } from "../utils/strIsInt";
+import { logger } from "../utils/Logger";
 
 config();
 
@@ -105,11 +106,13 @@ program
             return;
         }
 
-        console.log( options );
-        console.log( await parseCliArgs( options ) );
-        return;
-
         const cfg = await parseCliArgs( options );
+        logger.debug("running with config: ", cfg);
+        if( cfg.addrs.length === 0 )
+        {
+            logger.error("no addresses specified");
+            // return;
+        }
         main( cfg );
     });
 

@@ -21,6 +21,8 @@ import { isQueryMessageName, QueryRequest } from "./wssWorker/MainWorkerQuery";
 import { AppState } from "./state/AppState";
 import getPort from "get-port";
 
+const dirname = globalThis.__dirname ?? process.cwd();
+
 class WssWorker
 {
     nClients: number;
@@ -37,7 +39,7 @@ class WssWorker
         this.nClients = 0;
 
         this.worker = new Worker(
-            __dirname + "/wssWorker/webSocketServer.js",
+            dirname + "/wssWorker/webSocketServer.js",
             { workerData: { cfg, port } }
         );
 
@@ -59,7 +61,7 @@ class WssWorker
 
 export async function main( cfg: MutexoServerConfig )
 {
-    // const webSocketServer = new Worker(__dirname + "/wssWorker/webSocketServer.js", { workerData: { cfg, port: 3001 } });
+    // const webSocketServer = new Worker(dirname + "/wssWorker/webSocketServer.js", { workerData: { cfg, port: 3001 } });
 
     let usedPorts = [ cfg.httpPort ];
     const servers = await Promise.all(

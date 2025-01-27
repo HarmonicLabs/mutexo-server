@@ -17,10 +17,13 @@ import { IMutexoInputJson, IMutexoOutputJson } from "./data";
 import { MainWorkerQuery } from "./MainWorkerQuery";
 import { Cbor } from "@harmoniclabs/cbor";
 import { MutexEventInfos } from "../wsServer/MutexEventInfos";
+import { logger } from "../utils/Logger";
 
 const cfg = workerData.cfg as MutexoServerConfig;
 const cfgAddrs = new Set( cfg.addrs );
 const port = workerData.port as number;
+
+logger.setLogLevel( cfg.logLevel );
 
 function isFollowingAddr( addr: AddressStr ): boolean
 {
@@ -47,6 +50,9 @@ const unknownSubFilter = new MutexoError({ errorCode: 11 }).toCbor().toBuffer();
 const maxPayload = 512;
 
 const wsServer = new WebSocketServer({ path: "/events", maxPayload, port });
+logger.info(
+    "WebSocket server listening at ws://localhost:" + port + "/events",
+)
 
 const pingInterval = setInterval(
     () => {

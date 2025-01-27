@@ -1,23 +1,24 @@
 import { AddrFilter, ClientReq, ClientReqFree, ClientReqLock, ClientSub, ClientUnsub, Close, MutexoError, MutexFailure, MutexoFree, MutexoInput, MutexoLock, MutexoOutput, MutexSuccess, UtxoFilter, MutexOp, SubSuccess, clientReqFromCborObj, mutexoEventIndexToName, MutexoEventIndex } from "@harmoniclabs/mutexo-messages";
 import { setWsClientIp } from "../wsServer/clientProps";
 import { Address, AddressStr, forceTxOutRef, forceTxOutRefStr, TxOut, TxOutRefStr } from "@harmoniclabs/cardano-ledger-ts";
-import { fromHex, toHex } from "@harmoniclabs/uint8array-utils";
+import { fromHex } from "@harmoniclabs/uint8array-utils";
 import { getClientIp as getClientIpFromReq } from "request-ip";
 import { RawData, WebSocket, WebSocketServer } from "ws";
 import { isObject } from "@harmoniclabs/obj-utils";
 import { parentPort, workerData } from "node:worker_threads";
 import { unrawData } from "../utils/unrawData";
-import { verify } from "jsonwebtoken";
+import jwt from "jsonwebtoken";
 import { URL } from "node:url";
 import { addrFree, addrLock, addrOut, addrSpent, utxoFree, utxoLock, utxoSpent } from "../state/events";
 import { Client } from "../wsServer/Client";
-import { Mutex } from "../state/mutex/mutex";
 import { MutexoServerConfig } from "../MutexoServerConfig/MutexoServerConfig";
 import { IMutexoInputJson, IMutexoOutputJson } from "./data";
 import { MainWorkerQuery } from "./MainWorkerQuery";
 import { Cbor } from "@harmoniclabs/cbor";
 import { MutexEventInfos } from "../wsServer/MutexEventInfos";
 import { logger } from "../utils/Logger";
+
+const verify = jwt.verify;
 
 const cfg = workerData.cfg as MutexoServerConfig;
 const cfgAddrs = new Set( cfg.addrs );
@@ -123,7 +124,7 @@ wsServer.on("connection", async ( ws, req ) => {
         return;
     }
 
-    if( validationInfos.wsServerPort !== port )
+    if( validationInfos.wsServerPort !== port || url.port !== port.toString() )
     {
         ws.send( invalidAuthTokenMsg );
         terminateClient( Client.fromWs( ws ) );

@@ -1,4 +1,5 @@
-import { CardanoNetworkMagic, ChainPoint, ChainSyncClient, HandshakeAcceptVersion, HandshakeClient, IVersionData, LocalStateQueryClient, MiniProtocol } from "@harmoniclabs/ouroboros-miniprotocols-ts";
+import { CardanoNetworkMagic, ChainPoint, ChainSyncClient, HandshakeAcceptVersion, HandshakeClient, HandshakeQueryReply, IVersionData, LocalStateQueryClient, MiniProtocol } from "@harmoniclabs/ouroboros-miniprotocols-ts";
+import { logger } from "../utils/Logger";
 
 export async function sync( chainSyncClient: ChainSyncClient ): Promise<ChainPoint>
 {
@@ -51,16 +52,26 @@ export async function syncAndAcquire(
 ): Promise<ChainPoint>
 {
     const mplexer = chainSyncClient.mplexer;
+
+    const handshake = new HandshakeClient( mplexer );
+
+    handshake.on("error", err => {
+        logger.error("handshake error: ", err);
+        process.exit(1); 
+    });
     
     // handshake
     const handshakeResult = (
-        await new HandshakeClient( mplexer )
+        await handshake
         .propose({
             networkMagic,
             query: false
         })
     );
-    if(!( handshakeResult instanceof HandshakeAcceptVersion )) throw new Error("Handshake failed");
+    if(!(
+        handshakeResult instanceof HandshakeAcceptVersion
+        // || handshakeResult instanceof HandshakeQueryReply
+    )) throw new Error("Handshake failed");
 
     const tip = await sync( chainSyncClient );
 

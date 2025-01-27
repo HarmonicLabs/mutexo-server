@@ -20,8 +20,12 @@ import { logger } from "./utils/Logger";
 import { isQueryMessageName, QueryRequest } from "./wssWorker/MainWorkerQuery";
 import { AppState } from "./state/AppState";
 import getPort from "get-port";
+import { dirname as getDirname } from "node:path";
+import { fileURLToPath } from "node:url";
 
-const dirname = globalThis.__dirname ?? process.cwd();
+const dirname = globalThis.__dirname ??
+    getDirname( fileURLToPath( import.meta.url ) ) ??
+    process.cwd();
 
 class WssWorker
 {
@@ -100,39 +104,6 @@ export async function main( cfg: MutexoServerConfig )
         server._workerListener = listener;
     }
 
-    const app = express();
-    app.use( express.json() );
-    app.set("trust proxy", 1);
-
-    app.get("/wsAuth", wsAuthIpRateLimit, async ( req, res ) => {
-        const ip = getClientIpFromReq( req );
-        if(typeof ip !== "string")
-        {
-            res.status(500).send("invalid ip");
-            return;
-        }
-
-        let leastClients = Infinity;
-        let port = cfg.httpPort;
-
-        for( const server of servers )
-        {
-            if( server.nClients < leastClients )
-            {
-                leastClients = server.nClients;
-                port = server.port;
-            }
-        }
-
-        const token = state.getNewAuthToken( ip, port );
-
-        res.status(200).send({ token, port });
-    });
-
-    app.listen( cfg.httpPort, () => {
-        logger.info(`Mutexo http server listening at http://localhost:${cfg.httpPort}`);
-    });
-
     process.on("beforeExit", () => {
         for( const server of servers )
         {
@@ -141,12 +112,24 @@ export async function main( cfg: MutexoServerConfig )
     });
 
     const mplexer = new Multiplexer({
-        connect: () => connect({ path: process.env.CARDANO_NODE_SOCKET_PATH ?? "" }),
+        connect: () => connect({ path: cfg.nodeSocketPath }),
         protocolType: "node-to-client"
     });
 
+
     const chainSyncClient = new ChainSyncClient( mplexer );
     const lsqClient = new LocalStateQueryClient( mplexer );
+
+    mplexer.on("error", err => {
+        logger.error("mplexer error: ", err);
+        process.exit(1);
+    });
+    // mplexer.on("data", data => {
+    //     logger.debug("mplexer data: ", toHex( data ));
+    // });
+
+    chainSyncClient.on("error", logger.error.bind( logger ));
+    lsqClient.on("error", logger.error.bind( logger ));
 
     process.on("beforeExit", () => {
 		lsqClient.done();
@@ -176,6 +159,42 @@ export async function main( cfg: MutexoServerConfig )
         tip = rollBack.tip.point;
         const hashStr = toHex( rollBack.point.blockHeader.hash );
         state.chain.revertUntilHash( hashStr );
+    });
+
+    const app = express();
+    app.use( express.json() );
+    app.set("trust proxy", 1);
+
+    app.get("/wsAuth", wsAuthIpRateLimit, async ( req, res ) => {
+        const ip = getClientIpFromReq( req );
+        if(typeof ip !== "string")
+        {
+            res.status(500).send("invalid ip");
+            return;
+        }
+
+        let leastClients = Infinity;
+        let port = cfg.httpPort;
+
+        for( const server of servers )
+        {
+            if( server.nClients < leastClients )
+            {
+                leastClients = server.nClients;
+                port = server.port;
+            }
+        }
+
+        const token = state.getNewAuthToken( ip, port );
+
+        res
+        .status(200)
+        .type("application/json")
+        .send({ token, port });
+    });
+
+    app.listen( cfg.httpPort, () => {
+        logger.info(`Mutexo http server listening at http://localhost:${cfg.httpPort}`);
     });
 
     while( true )

@@ -1,6 +1,6 @@
 import { Command } from "commander";
 import { config } from "dotenv";
-import { defaultConfigPath, defaultIngoreDotenv, defaultNetwork, defaultHttpPort, defaultWssPorts, defaultPortRange, defaultThreads, defaultPortRangeStr } from "./defaults";
+import { defaultConfigPath, defaultIngoreDotenv, defaultNetwork, defaultHttpPort, defaultWssPorts, defaultPortRange, defaultThreads, defaultPortRangeStr, defaultAddrs } from "./defaults";
 import { isAddrStr } from "../utils/isAddrStr";
 import { parseCliArgs } from "../MutexoServerConfig/parseCliArgs";
 import { main } from "../main";
@@ -58,10 +58,11 @@ program
         "-a, --addr <string...>",
         "cardano address to be monitored, can be specified multiple times",
         (value, prev: string[]) => {
+            if( !Array.isArray(prev) ) prev = [];
             if( isAddrStr( value ) ) prev.push(value);
             return prev;
         },
-        // defaultAddrs.slice()
+        defaultAddrs.slice()
     )
     .option(
         "-l, --log-level <string>",

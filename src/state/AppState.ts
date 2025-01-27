@@ -1,7 +1,7 @@
 import { webcrypto } from "node:crypto";
 import { Chain } from "./data/Chain";
 import { LeakingBucket } from "./rate-limit/LeakingBucket";
-import { sign } from "jsonwebtoken";
+import jwt from "jsonwebtoken";
 import { Worker } from "node:worker_threads";
 import { isGetAuthTokenSecretQueryRequest, isIncrLeakingBucketQueryRequest, isLockQueryRequest, isResolveUtxosQueryRequest, isUnlockQueryRequest, QueryRequest } from "../wssWorker/MainWorkerQuery";
 import { Mutex } from "./mutex/mutex";
@@ -9,6 +9,8 @@ import { AddressStr, TxOutRefStr } from "@harmoniclabs/cardano-ledger-ts";
 import { MutexEventInfos } from "../wsServer/MutexEventInfos";
 import { MutexoServerConfig } from "../MutexoServerConfig/MutexoServerConfig";
 import { SharedAddrStr } from "../utils/SharedAddrStr";
+
+const sign = jwt.sign;
 
 export interface AuthValidationInfos {
     secret: Uint8Array;

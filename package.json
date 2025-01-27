@@ -1,7 +1,7 @@
 {
     "name": "@harmoniclabs/mutexo-server",
     "version": "0.1.0",
-    "type": "commonjs",
+    "type": "module",
     "bin": {
         "mutexo-server": "./dist/cli/index.js"
     },

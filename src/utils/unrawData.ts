@@ -2,7 +2,8 @@ import type { RawData } from "ws";
 
 export function unrawData( rawData: RawData ): Buffer
 {
-    return rawData instanceof Uint8Array || rawData instanceof ArrayBuffer ?
+    rawData = rawData instanceof ArrayBuffer ? Buffer.from( rawData ) : rawData;
+    return rawData instanceof Uint8Array ?
         Buffer.from( rawData ) :
         (
             Array.isArray( rawData ) ?

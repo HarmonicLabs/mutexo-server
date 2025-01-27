@@ -10,6 +10,24 @@ export enum LogLevel {
 
 Object.freeze( LogLevel );
 
+export type LogLevelString = keyof typeof LogLevel & string;
+
+export function isLogLevelString( str: string ): str is LogLevelString
+{
+    return (
+        typeof str === "string" &&
+        typeof LogLevel[str.toUpperCase() as any] === "number"
+    );
+}
+
+export function logLevelFromString( str: string ): LogLevel
+{
+    if( typeof str !== "string" ) return LogLevel.INFO;
+    return (
+        LogLevel[str.toUpperCase() as any] as any as LogLevel | undefined
+    ) ?? LogLevel.INFO;
+}
+
 export interface LoggerConfig {
     logLevel: LogLevel;
 }
@@ -54,10 +72,6 @@ export class Logger
         return this.logLevel <= LogLevel.ERROR;
     }
 
-    static setLogLevel( level: LogLevel )
-    {
-        Logger.globalConfig.logLevel = level;
-    }
     setLogLevel( level: LogLevel )
     {
         this.config.logLevel = level;

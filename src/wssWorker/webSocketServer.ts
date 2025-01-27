@@ -18,9 +18,9 @@ import { MainWorkerQuery } from "./MainWorkerQuery";
 import { Cbor } from "@harmoniclabs/cbor";
 import { MutexEventInfos } from "../wsServer/MutexEventInfos";
 
-const cfg = workerData as MutexoServerConfig;
+const cfg = workerData.cfg as MutexoServerConfig;
 const cfgAddrs = new Set( cfg.addrs );
-const port = cfg.port;
+const port = workerData.port as number;
 
 function isFollowingAddr( addr: AddressStr ): boolean
 {
@@ -109,8 +109,15 @@ wsServer.on("connection", async ( ws, req ) => {
         return;
     }
 
-    const authTokenSecret = await mainWorker.getAuthTokenSecret( token );
-    if( !authTokenSecret )
+    const validationInfos = await mainWorker.getAuthValidationInfosByToken( token );
+    if( !validationInfos )
+    {
+        ws.send( invalidAuthTokenMsg );
+        terminateClient( Client.fromWs( ws ) );
+        return;
+    }
+
+    if( validationInfos.wsServerPort !== port )
     {
         ws.send( invalidAuthTokenMsg );
         terminateClient( Client.fromWs( ws ) );
@@ -120,7 +127,7 @@ wsServer.on("connection", async ( ws, req ) => {
     let stuff: any
     try 
     {
-        stuff = verify( token, Buffer.from( authTokenSecret ) );
+        stuff = verify( token, Buffer.from( validationInfos.secret ) );
     } 
     catch 
     {

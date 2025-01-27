@@ -2,10 +2,11 @@ import { Tx, TxOutRefStr } from "@harmoniclabs/cardano-ledger-ts";
 import { MessagePort } from "node:worker_threads";
 import { LockerInfo } from "../state/mutex/mutex";
 import { Client } from "../wsServer/Client";
+import { AuthValidationInfos } from "../state/AppState";
 
 export type MainWorkerQueryName
     = "incrementLeakingBucket"
-    | "getAuthTokenSecret"
+    | "getAuthValidationInfosByToken"
     | "resolveUtxos"
     | "lock"
     | "unlock";
@@ -14,7 +15,7 @@ export function isQueryMessageName( str: string ): str is MainWorkerQueryName
 {
     return (
         str === "incrementLeakingBucket"    ||
-        str === "getAuthTokenSecret"        ||
+        str === "getAuthValidationInfosByToken"        ||
         str === "resolveUtxos"              ||
         str === "lock"                      ||
         str === "unlock"
@@ -32,7 +33,7 @@ export function isIncrLeakingBucketQueryRequest( obj: any ): obj is QueryRequest
     return obj.type === "incrementLeakingBucket";
 }
 
-export function isGetAuthTokenSecretQueryRequest( obj: any ): obj is QueryRequest<"getAuthTokenSecret">
+export function isGetAuthTokenSecretQueryRequest( obj: any ): obj is QueryRequest<"getAuthValidationInfosByToken">
 {
     return obj.type === "getAuthToken";
 }
@@ -54,7 +55,7 @@ export function isUnlockQueryRequest( obj: any ): obj is QueryRequest<"unlock">
 
 export type QueryArgsOf<Name extends MainWorkerQueryName> =
     Name extends "incrementLeakingBucket" ? [ ip: string ] :
-    Name extends "getAuthTokenSecret" ? [ token: string ] :
+    Name extends "getAuthValidationInfosByToken" ? [ token: string ] :
     Name extends "resolveUtxos" ? [ refs: TxOutRefStr[] ] :
     Name extends "lock" ? [ client: LockerInfo, refs: TxOutRefStr[], required: number ] :
     Name extends "unlock" ? [ client: LockerInfo, refs: TxOutRefStr[] ] :
@@ -118,9 +119,9 @@ export class MainWorkerQuery
         return this._send( "incrementLeakingBucket", [ ip ] );
     }
 
-    getAuthTokenSecret( token: string ): Promise<Uint8Array | undefined>
+    getAuthValidationInfosByToken( token: string ): Promise<AuthValidationInfos | undefined>
     {
-        return this._send( "getAuthTokenSecret", [ token ] );
+        return this._send( "getAuthValidationInfosByToken", [ token ] );
     }
 
     resolveUtxos( refs: TxOutRefStr[] ): Promise<ResolvedSerializedUtxo[]>

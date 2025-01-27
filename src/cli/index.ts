@@ -1,7 +1,6 @@
-import { execSync } from "child_process";
 import { Command } from "commander";
 import { config } from "dotenv";
-import { defaultConfigPath, defaultIngoreDotenv, defaultWssPort, defaultNetwork } from "./defaults";
+import { defaultConfigPath, defaultIngoreDotenv, defaultNetwork, defaultHttpPort, defaultWssPorts, defaultPortRange, defaultThreads, defaultPortRangeStr } from "./defaults";
 import { isAddrStr } from "../utils/isAddrStr";
 import { parseCliArgs } from "../MutexoServerConfig/parseCliArgs";
 import { main } from "../main";
@@ -55,12 +54,7 @@ program
         defaultNetwork
     )
     .option(
-        "-E, --ignore-env", 
-        "explicitly ignores the .env file",
-        defaultIngoreDotenv
-    )
-    .option(
-        "-a, --addr <string>",
+        "-a, --addr <string...>",
         "cardano address to be monitored, can be specified multiple times",
         (value, prev: string[]) => {
             if( isAddrStr( value ) ) prev.push(value);
@@ -69,13 +63,40 @@ program
         // defaultAddrs.slice()
     )
     .option(
+        "-l, --log-level <string>",
+        'either "debug" | "info" | "warn" | "error" | "none"',
+        "info"
+    )
+    .option(
+        "-t, --threads <string>",
+        "percentage or number of threads to use; " +
+        "if percentage, the number will be calculated based on the number of cores; " +
+        "minimum 2 threads (chain-sync and ws-server)",
+        defaultThreads
+    )
+    .option(
         "-s, --node-socket-path <string>",
         "path to the cardano-node socket"
     )
     .option(
-        "-p, --port <number>",
-        "port for the WebSocket server to listen to",
-        defaultWssPort.toString()
+        "-hp, --http-port <number>",
+        "port of the http server (main thread)",
+        defaultHttpPort.toString()
+    )
+    .option(
+        "-ws, --ws-port <number...>",
+        "port(s) of the web socket server(s); " +
+        "if not enough ports are specified, random (aviable) ports will be used"
+    )
+    // .option(
+    //     "-pr, --port-range <string>",
+    //     "(format: /\\b\\d{2,5}-\\d{2,5}\\b/) range of ports to use for the web socket server(s);",
+    //     defaultPortRangeStr
+    // )
+    .option(
+        "-E, --ignore-env", 
+        "explicitly ignores the .env file",
+        defaultIngoreDotenv
     )
     .action(async ( options, program ) => {
         if( process.argv.includes("help") )
@@ -83,6 +104,10 @@ program
             program.help("start");
             return;
         }
+
+        console.log( options );
+        console.log( await parseCliArgs( options ) );
+        return;
 
         const cfg = await parseCliArgs( options );
         main( cfg );

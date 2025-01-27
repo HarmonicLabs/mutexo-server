@@ -17,19 +17,90 @@ import express from "express";
 import { wsAuthIpRateLimit } from "./middlewares/ip";
 import { getClientIp as getClientIpFromReq } from "request-ip";
 import { logger } from "./utils/Logger";
-import { isQueryMessageName } from "./wssWorker/MainWorkerQuery";
+import { isQueryMessageName, QueryRequest } from "./wssWorker/MainWorkerQuery";
 import { AppState } from "./state/AppState";
+import getPort from "get-port";
 
+class WssWorker
+{
+    nClients: number;
+    readonly worker: Worker;
+    readonly isTerminated: boolean = false;
+    
+    _workerListener: ( msg: QueryRequest, wssWorker: Worker ) => void;
+
+    constructor(
+        readonly cfg: MutexoServerConfig,
+        readonly port: number
+    )
+    {
+        this.nClients = 0;
+
+        this.worker = new Worker(
+            __dirname + "/wssWorker/webSocketServer.js",
+            { workerData: { cfg, port } }
+        );
+
+        const self = this;
+        this._workerListener = () => {};
+
+        this.isTerminated = false;
+        this.worker.on("exit", () => { (this as any).isTerminated = true; });
+    }
+
+    terminate()
+    {
+        if(typeof this._workerListener === "function") this.worker.off("message", this._workerListener);
+        if( !this.isTerminated ) return;
+        this.worker.terminate();
+        (this as any).isTerminated = true;
+    }
+}
 
 export async function main( cfg: MutexoServerConfig )
 {
-    const webSocketServer = new Worker(__dirname + "/wssWorker/webSocketServer.js", { workerData: cfg });
-    
+    // const webSocketServer = new Worker(__dirname + "/wssWorker/webSocketServer.js", { workerData: { cfg, port: 3001 } });
+
+    let usedPorts = [ cfg.httpPort ];
+    const servers = await Promise.all(
+        new Array( cfg.threads - 1 )
+        .fill( 0 as any )
+        .map( async (_, i) => {
+            let port = cfg.wsPorts[ i ] ?? cfg.httpPort + 1 + i; 
+            port = await getPort({
+                port,
+                exclude: usedPorts
+            });
+            usedPorts.push( port );
+            return new WssWorker(
+                cfg,
+                port
+            );
+        })
+    );
+    const state = new AppState( cfg, servers.map( s => s.worker ) );
+
+    for( const server of servers )
+    {
+        const listener = (msg: any) => {
+            if( !isObject( msg ) ) return;
+
+            if( isQueryMessageName( msg.type ) )
+            {
+                if( !server.isTerminated )
+                    state.handleQueryMessage( msg, server.worker );
+                return;
+            }
+        };
+        // add listener
+        server.worker.on("message", listener);
+        // to remove on terminate
+        server._workerListener = listener;
+    }
+
     const app = express();
     app.use( express.json() );
     app.set("trust proxy", 1);
-
-    const state = new AppState( cfg, [ webSocketServer ] );
 
     app.get("/wsAuth", wsAuthIpRateLimit, async ( req, res ) => {
         const ip = getClientIpFromReq( req );
@@ -37,19 +108,34 @@ export async function main( cfg: MutexoServerConfig )
         {
             res.status(500).send("invalid ip");
             return;
-        }  
+        }
 
-        const tokenStr = state.getNewAuthToken( ip );
+        let leastClients = Infinity;
+        let port = cfg.httpPort;
 
-        res.status(200).send( tokenStr );
+        for( const server of servers )
+        {
+            if( server.nClients < leastClients )
+            {
+                leastClients = server.nClients;
+                port = server.port;
+            }
+        }
+
+        const token = state.getNewAuthToken( ip, port );
+
+        res.status(200).send({ token, port });
     });
 
-    app.listen( cfg.port, () => {
-        logger.info(`Mutexo http server listening at http://localhost:${cfg.port}`);
+    app.listen( cfg.httpPort, () => {
+        logger.info(`Mutexo http server listening at http://localhost:${cfg.httpPort}`);
     });
 
     process.on("beforeExit", () => {
-        webSocketServer.terminate();
+        for( const server of servers )
+        {
+            server.worker.terminate();
+        }
     });
 
     const mplexer = new Multiplexer({
@@ -72,16 +158,6 @@ export async function main( cfg: MutexoServerConfig )
     //     cfg.addrs.map( followAddr )
     // )
 
-    webSocketServer.on("message", async ( msg ) => {
-        if( !isObject( msg ) ) return;
-
-        if( isQueryMessageName( msg.type ) )
-        {
-            state.handleQueryMessage( msg, webSocketServer );
-            return;
-        }
-    })
-
     chainSyncClient.on("rollForward", rollForward => {
         const blockData: Uint8Array = rollForward.cborBytes ?
             rollForwardBytesToBlockData( rollForward.cborBytes, rollForward.data ) : 
@@ -89,7 +165,7 @@ export async function main( cfg: MutexoServerConfig )
 
         tip = rollForward.tip.point;
 
-        saveBlockAndEmitEvents( state, blockData, webSocketServer );
+        saveBlockAndEmitEvents( state, blockData, servers );
     });
 
     chainSyncClient.on("rollBackwards", rollBack => {
@@ -138,7 +214,7 @@ function rollForwardBytesToBlockData( bytes: Uint8Array, defaultCborObj: CborObj
     return cbor.array[1];
 }
 
-function saveBlockAndEmitEvents( state: AppState, blockData: Uint8Array, wssWorker: Worker ): void
+function saveBlockAndEmitEvents( state: AppState, blockData: Uint8Array, wssWorkers: WssWorker[] ): void
 {
     const lazyBlock = Cbor.parseLazy( blockData );
     
@@ -214,11 +290,15 @@ function saveBlockAndEmitEvents( state: AppState, blockData: Uint8Array, wssWork
             const inputEntry = chain.spend( ref );
             if( !inputEntry ) continue;
 
-            emitInputEvent( wssWorker, {
-                addr: inputEntry.addr.toString(),
-                ref,
-                txHash: hashStr
-            });
+            for( const server of wssWorkers )
+            {
+                if( server.isTerminated ) continue;
+                emitInputEvent( server.worker, {
+                    addr: inputEntry.addr.toString(),
+                    ref,
+                    txHash: hashStr
+                });
+            }
         }
 
         const outs: TxOutRefStr[] = [];
@@ -233,10 +313,14 @@ function saveBlockAndEmitEvents( state: AppState, blockData: Uint8Array, wssWork
             outs.push( ref );
             chain.saveTxOut( out, ref, addr );
 
-            emitOutputEvent( wssWorker, {
-                addr,
-                ref,
-            });
+            for( const server of wssWorkers )
+            {
+                if( server.isTerminated ) continue;
+                emitOutputEvent( server.worker, {
+                    addr,
+                    ref,
+                });
+            }
         }
 
         blockInfos.txs[ tx_i ] = {

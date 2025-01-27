@@ -10,6 +10,11 @@ import { MutexEventInfos } from "../wsServer/MutexEventInfos";
 import { MutexoServerConfig } from "../MutexoServerConfig/MutexoServerConfig";
 import { SharedAddrStr } from "../utils/SharedAddrStr";
 
+export interface AuthValidationInfos {
+    secret: Uint8Array;
+    wsServerPort: number;
+}
+
 export class AppState
 {
     constructor(
@@ -22,7 +27,7 @@ export class AppState
         this.mutex = new Mutex( this.chain );
     }
 
-    readonly authTokens = new Map<string, Uint8Array>();
+    readonly authTokens = new Map<string, AuthValidationInfos>();
     readonly leakingBucket = new LeakingBucket();
     readonly chain: Chain;
     readonly mutex: Mutex;
@@ -37,23 +42,23 @@ export class AppState
         return result;
     }
 
-    getNewAuthToken( ip: string ): string
+    getNewAuthToken( ip: string, wsServerPort: number ): string
     {
-        let secretBytes = new Uint8Array(32);
+        let secret = new Uint8Array(32);
         let tokenStr: string;
 
         const expirationSeconds = 30;
     
         do {
-            webcrypto.getRandomValues( secretBytes );
+            webcrypto.getRandomValues( secret );
             tokenStr = sign(
                 { ip },
-                Buffer.from( secretBytes ),
+                Buffer.from( secret ),
                 { expiresIn: expirationSeconds }
             );
         } while( this.authTokens.has( tokenStr ) );
     
-        this.authTokens.set( tokenStr, secretBytes );
+        this.authTokens.set( tokenStr, { secret, wsServerPort } );
 
         // expires
         setTimeout(() => {
@@ -86,8 +91,8 @@ export class AppState
         if( isGetAuthTokenSecretQueryRequest( msg ) )
         {
             const [ token ] = msg.args;
-            const secretBytes = this.authTokens.get( token );
-            this._sendQueryResult( wssWorker, msg.id, secretBytes );
+            const validationInfos = this.authTokens.get( token );
+            this._sendQueryResult( wssWorker, msg.id, validationInfos );
             return;
         }
         if( isResolveUtxosQueryRequest( msg ) )

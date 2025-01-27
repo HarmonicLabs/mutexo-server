@@ -85,8 +85,15 @@ export async function parseCliArgs( args: Partial<MutexoServerCliArgs> ): Promis
         )
     );
 
+    const disableLogColors = get(
+        "disableLogColors",
+        "boolean",
+        false
+    );
+
     logger.setLogLevel( logLevel );
-    
+    logger.useColors( !disableLogColors );
+
     return {
         network,
         threads,
@@ -109,7 +116,8 @@ export async function parseCliArgs( args: Partial<MutexoServerCliArgs> ): Promis
             )
         ),
         addrs,
-        ignoreEnv
+        ignoreEnv,
+        disableLogColors
     };
 }
 

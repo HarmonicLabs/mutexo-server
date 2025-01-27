@@ -12,6 +12,7 @@ export interface MutexoServerCliArgs {
     portRange: string; // /\b\d{2,5}-\d{2,5}\b/
     addr: string[];
     ignoreEnv: boolean;
+    disableLogColors: boolean;
 }
 
 export interface MutexoServerConfig {
@@ -24,4 +25,5 @@ export interface MutexoServerConfig {
     portRange: [number, number];
     addrs: AddressStr[];
     ignoreEnv: boolean;
+    disableLogColors: boolean;
 }

@@ -1,4 +1,4 @@
-
+import color from "picocolors";
 
 export enum LogLevel {
     DEBUG = 0,
@@ -38,9 +38,8 @@ const defaultLoggerConfig: LoggerConfig = {
 
 export class Logger
 {
-    private static globalConfig: LoggerConfig = Object.freeze({ logLevel: LogLevel.ERROR });
-
     private config: LoggerConfig = { ...defaultLoggerConfig };
+    private _colors: boolean = true;
 
     constructor( config?: Partial<LoggerConfig> )
     {
@@ -52,7 +51,12 @@ export class Logger
 
     get logLevel()
     {
-        return Math.min( this.config.logLevel, Logger.globalConfig.logLevel );
+        return this.config.logLevel;
+    }
+
+    useColors( enable: boolean = true )
+    {
+        this._colors = enable;
     }
 
     canDebug(): boolean
@@ -79,23 +83,43 @@ export class Logger
 
     debug( ...stuff: any[] )
     {
-        if( this.canDebug() ) console.log( ...stuff );
+        if( !this.canDebug() ) return;
+        
+        let prefix = `[Debug][${new Date().toUTCString()}]:`;
+        if( this._colors ) prefix = color.magenta( prefix );
+
+        console.log( prefix, ...stuff );
     }
     log( ...stuff: any[] )
     {
-        if( this.canInfo() ) console.log( ...stuff );
+        this.info( ...stuff );
     }
     info( ...stuff: any[] )
     {
-        if( this.canInfo() ) console.info( ...stuff );
+        if( !this.canInfo() ) return;
+
+        let prefix = `[Info ][${new Date().toUTCString()}]:`;
+        if( this._colors ) prefix = color.cyan( prefix );
+
+        console.log( prefix, ...stuff );
     }
     warn( ...stuff: any[] )
     {
-        if( this.canWarn() ) console.warn( ...stuff );
+        if( !this.canWarn() ) return;
+        
+        let prefix = `[Warn ][${new Date().toUTCString()}]:`;
+        if( this._colors ) prefix = color.yellow( prefix );
+
+        console.warn( prefix, ...stuff );
     }
     error( ...stuff: any[] )
     {
-        if( this.canError() ) console.error( ...stuff );
+        if( !this.canError() ) return;
+
+        let prefix = `[Error][${new Date().toUTCString()}]:`;
+        if( this._colors ) prefix = color.red( prefix );
+
+        console.error( prefix, ...stuff );
     }
 }
 

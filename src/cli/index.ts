@@ -95,9 +95,14 @@ program
     //     defaultPortRangeStr
     // )
     .option(
-        "-E, --ignore-env", 
+        "--ignore-env", 
         "explicitly ignores the .env file",
         defaultIngoreDotenv
+    )
+    .option(
+        "--disable-log-colors",
+        "disables colors in the log output",
+        false
     )
     .action(async ( options, program ) => {
         if( process.argv.includes("help") )
@@ -108,12 +113,13 @@ program
 
         const cfg = await parseCliArgs( options );
         logger.debug("running with config: ", cfg);
+
         if( cfg.addrs.length === 0 )
         {
             logger.error("no addresses specified");
-            // return;
+            return;
         }
-        main( cfg );
+        return main( cfg );
     });
 
 program.parse( process.argv );

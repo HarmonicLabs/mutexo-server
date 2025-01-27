@@ -25,6 +25,7 @@ const cfgAddrs = new Set( cfg.addrs );
 const port = workerData.port as number;
 
 logger.setLogLevel( cfg.logLevel );
+logger.useColors( !cfg.disableLogColors )
 
 function isFollowingAddr( addr: AddressStr ): boolean
 {
@@ -53,7 +54,7 @@ const maxPayload = 512;
 const wsServer = new WebSocketServer({ path: "/events", maxPayload, port });
 logger.info(
     "WebSocket server listening at ws://localhost:" + port + "/events",
-)
+);
 
 const pingInterval = setInterval(
     () => {

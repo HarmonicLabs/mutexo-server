@@ -1,15 +1,12 @@
 import { ChainSyncClient, LocalStateQueryClient, Multiplexer } from "@harmoniclabs/ouroboros-miniprotocols-ts";
 import { Cbor, CborArray, CborBytes, CborObj, CborTag, CborUInt, LazyCborArray, LazyCborObj } from "@harmoniclabs/cbor";
-import { Address, AddressStr, TxBody, TxOut, TxOutRefStr } from "@harmoniclabs/cardano-ledger-ts";
+import { Address, TxBody, TxOutRefStr } from "@harmoniclabs/cardano-ledger-ts";
 import { syncAndAcquire } from "./funcs/syncAndAcquire";
 import { toHex } from "@harmoniclabs/uint8array-utils";
-import { filterInplace } from "./utils/filterInplace";
 import { isObject } from "@harmoniclabs/obj-utils";
-import { isAddrStr } from "./utils/isAddrStr";
 import { Worker } from "node:worker_threads";
 import { connect } from "net";
 import { MutexoServerConfig } from "./MutexoServerConfig/MutexoServerConfig";
-import { Chain } from "./state/data/Chain";
 import { createHash } from "blake2";
 import { BlockInfos, TxIO } from "./types/BlockInfos";
 import { IMutexoInputJson, IMutexoOutputJson } from "./wssWorker/data";
@@ -22,6 +19,7 @@ import { AppState } from "./state/AppState";
 import getPort from "get-port";
 import { dirname as getDirname } from "node:path";
 import { fileURLToPath } from "node:url";
+import { queryAddrsUtxos } from "./funcs/queryAddrsUtxos";
 
 const dirname = globalThis.__dirname ??
     getDirname( fileURLToPath( import.meta.url ) ) ??
@@ -138,6 +136,19 @@ export async function main( cfg: MutexoServerConfig )
     });
 
     let tip = await syncAndAcquire( chainSyncClient, lsqClient, cfg.network );
+
+    {
+        const utxos = await queryAddrsUtxos(
+            lsqClient,
+            cfg.addrs.map( str => Address.fromString( str ) )
+        );
+        for( const utxo of utxos )
+        {
+            const addr = utxo.resolved.address.toString();
+            const ref = utxo.utxoRef.toString();
+            state.chain.saveTxOut( utxo.resolved, ref, addr );
+        }
+    }
 
     // await Promise.all(
     //     cfg.addrs.map( followAddr )
@@ -276,7 +287,10 @@ function saveBlockAndEmitEvents( state: AppState, blockData: Uint8Array, wssWork
         txs : new Array<TxIO>( txsBodies.length ),
     };
 
-    for( let tx_i = 0; tx_i < txsBodies.length; tx_i++ )
+    const n_txs = txsBodies.length;
+    logger.info({ block_hash, n_txs });
+
+    for( let tx_i = 0; tx_i < n_txs; tx_i++ )
     {
         const body = txsBodies[ tx_i ];
 
@@ -311,6 +325,7 @@ function saveBlockAndEmitEvents( state: AppState, blockData: Uint8Array, wssWork
             const inputEntry = chain.spend( ref );
             if( !inputEntry ) continue;
 
+            logger.debug("spending tx out", ref);
             for( const server of wssWorkers )
             {
                 if( server.isTerminated ) continue;
@@ -334,6 +349,7 @@ function saveBlockAndEmitEvents( state: AppState, blockData: Uint8Array, wssWork
             outs.push( ref );
             chain.saveTxOut( out, ref, addr );
 
+            logger.debug("saving tx out", ref);
             for( const server of wssWorkers )
             {
                 if( server.isTerminated ) continue;

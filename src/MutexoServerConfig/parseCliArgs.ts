@@ -1,6 +1,6 @@
 import { readFile } from "node:fs/promises";
 import { MutexoServerCliArgs, MutexoServerConfig } from "./MutexoServerConfig";
-import { defaultAddrs, defaultHttpPort, defaultIngoreDotenv, defaultNetwork, defaultPortRange, defaultThreads, defaultWssPorts } from "../cli/defaults";
+import { defaultAddrs, defaultConfigPath, defaultHttpPort, defaultIngoreDotenv, defaultLocalConfigPath, defaultNetwork, defaultPortRange, defaultThreads, defaultWssPorts } from "../cli/defaults";
 import { AddressStr } from "@harmoniclabs/cardano-ledger-ts";
 import { isAddrStr } from "../utils/isAddrStr";
 import { existsSync } from "node:fs";
@@ -11,12 +11,23 @@ import { isLogLevelString, Logger, logger, LogLevel, logLevelFromString } from "
 export async function parseCliArgs( args: Partial<MutexoServerCliArgs> ): Promise<MutexoServerConfig>
 {
     const jsonCfg = (
-        typeof args.configPath === "string" && existsSync( args.configPath ) ?
+        typeof args.config === "string" && existsSync( args.config ) ?
         JSON.parse(
-            await readFile( args.configPath, { encoding: "utf-8" } )
+            await readFile( args.config, { encoding: "utf-8" } )
         ) as Partial<MutexoServerConfig>
-        : {}
+        : (
+            existsSync( defaultConfigPath ) ?
+            JSON.parse(
+                await readFile( defaultConfigPath, { encoding: "utf-8" }
+            ) ) as Partial<MutexoServerConfig> :
+            existsSync( defaultLocalConfigPath ) ?
+            JSON.parse(
+                await readFile( defaultLocalConfigPath, { encoding: "utf-8" }
+            ) ) as Partial<MutexoServerConfig>
+        : {})
     );
+
+    console.log( "jsonCfg: ", jsonCfg );
 
     function get<T>(
         key: keyof MutexoServerConfig,

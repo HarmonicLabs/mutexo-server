@@ -40,7 +40,7 @@ program
     )
     .option(
         "-n, --network <string>",
-        "specify the network to use, either mainnet | preview | preprod; otherwise the network magic number",
+        "specify the network to use, either mainnet | preview | preprod; otherwise the network magic number (default: mainnet)",
         (value, prev: string | number | undefined) => {
             if( value === "mainnet" ) return CardanoNetworkMagic.Mainnet;
             if( value === "preview" ) return CardanoNetworkMagic.Preview;
@@ -51,8 +51,7 @@ program
                 if( num >= 0 ) return num;
             }
             return prev;
-        },
-        defaultNetwork
+        }
     )
     .option(
         "-a, --addr <string...>",
@@ -61,20 +60,17 @@ program
             if( !Array.isArray(prev) ) prev = [];
             if( isAddrStr( value ) ) prev.push(value);
             return prev;
-        },
-        defaultAddrs.slice()
+        }
     )
     .option(
         "-l, --log-level <string>",
-        'either "debug" | "info" | "warn" | "error" | "none"',
-        "info"
+        'either "debug" | "info" | "warn" | "error" | "none" (default: "info")'
     )
     .option(
         "-t, --threads <string>",
         "percentage or number of threads to use; " +
         "if percentage, the number will be calculated based on the number of cores; " +
-        "minimum 2 threads (chain-sync and ws-server)",
-        defaultThreads
+        "minimum 2 threads (chain-sync and ws-server) (default: 50%)",
     )
     .option(
         "-s, --node-socket-path <string>",
@@ -82,8 +78,7 @@ program
     )
     .option(
         "-hp, --http-port <number>",
-        "port of the http server (main thread)",
-        defaultHttpPort.toString()
+        "port of the http server (main thread) (default: 3001)",
     )
     .option(
         "-ws, --ws-port <number...>",
@@ -113,6 +108,7 @@ program
         }
 
         const cfg = await parseCliArgs( options );
+        console.log( logger.logLevel , logger.canDebug() )
         logger.debug("running with config: ", cfg);
 
         if( cfg.addrs.length === 0 )

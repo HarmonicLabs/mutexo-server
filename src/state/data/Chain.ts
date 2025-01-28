@@ -102,26 +102,36 @@ export class Chain
     {
         const bytes = out.toCbor().toBuffer();
         const addr = SharedAddrStr.getIfExists( address ?? out.address.toString() );
-        if( !addr ) return;
+        if( !addr )
+        {
+            logger.debug( "missing address while saving tx out", address );
+            return;
+        }
 
         this.utxoSet.set( ref, { bytes, isSpent: false, addr } );
         this.getAddrUtxos( addr ).add( ref );
-    }
 
-    // saveUtxos( utxos: UTxO[] ): void
-    // {
-    //     for( const u of utxos )
-    //     {
-    //         this.saveTxOut( u.resolved, u.utxoRef.toString() );
-    //     }
-    // }
+        logger.debug( "saved utxo", ref );
+    }
 
     spend( ref: TxOutRefStr ): UtxoSetEntry | undefined
     {
         const entry = this.utxoSet.get( ref );
         if( !entry ) return undefined;
-        entry.isSpent = true;
+        this._spend( ref, entry );
         return entry;
+    }
+
+    private _spend( ref: TxOutRefStr, entry: UtxoSetEntry ): void
+    {
+        entry.isSpent = true;
+        this.getAddrUtxos( entry.addr ).delete( ref );
+    }
+
+    private _unspend( ref: TxOutRefStr, entry: UtxoSetEntry ): void
+    {
+        entry.isSpent = false;
+        this.getAddrUtxos( entry.addr ).add( ref );
     }
 
     private revertTxs( txs: TxIO[] ): void
@@ -154,7 +164,7 @@ export class Chain
             // WE CANNOT DELETE THE UTXO,
             // IT MAY BE RECREATED ON THE NEW FORK
             // this.utxoSet.delete( out );
-            entry.isSpent = true;
+            this._spend( out, entry );
     
             const addr = SharedAddrStr.getIfExists( txOut.address.toString() );
             if( !addr ) continue;
@@ -177,18 +187,8 @@ export class Chain
             const entry = this.utxoSet.get( ref );
             if( !entry ) continue;
             const txOut = TxOut.fromCbor( entry.bytes );
-            entry.isSpent = false;
-    
-            const addr = SharedAddrStr.getIfExists( txOut.address.toString() );
-            if( !addr ) continue;
 
-            let addrUtxos = this.addrUtxoIndex.get( addr );
-            if( !addrUtxos )
-            {
-                addrUtxos = new Set();
-                this.addrUtxoIndex.set( addr, addrUtxos );
-            }
-            addrUtxos.add( ref );
+            this._unspend( ref, entry );
         }
     }
 }

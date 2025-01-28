@@ -107,6 +107,8 @@ wsServer.on("connection", async ( ws, req ) => {
         return;
     }
 
+    logger.debug("client connection from", ip);
+
     const url = new URL(req.url ?? "", "ws://" + req.headers.host + "/");
     const token = url.searchParams.get("token");
 

@@ -24,5 +24,5 @@ export function getMaxWorkers(): number
 {
     let realNum = typeof globalThis.navigator === 'undefined' ? _os_availableParallelism : globalThis.navigator.hardwareConcurrency;
     realNum = typeof realNum === 'number' ? realNum : MIN_WORKERS;
-    return Math.max( realNum | 0, MIN_WORKERS );
+    return Math.max( realNum >>> 0, MIN_WORKERS );
 }

@@ -1,6 +1,7 @@
 import { AddressStr } from "@harmoniclabs/cardano-ledger-ts";
 
 export const defaultConfigPath = "./mutexo-config.json";
+export const defaultLocalConfigPath = "./mutexo-config.local.json";
 export const defaultTxs = 2;
 export const defaultTest = true;
 // export const defaultNodeSocketPath = "./node.socket";

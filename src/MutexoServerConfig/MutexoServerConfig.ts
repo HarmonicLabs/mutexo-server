@@ -2,7 +2,7 @@ import { AddressStr } from "@harmoniclabs/cardano-ledger-ts";
 import { LogLevel } from "../utils/Logger";
 
 export interface MutexoServerCliArgs {
-    configPath: string;
+    config: string;
     network: "mainet" | "preview" | "preprod" | number;
     threads: string;
     logLevel: string;

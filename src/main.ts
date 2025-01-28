@@ -1,4 +1,4 @@
-import { ChainSyncClient, LocalStateQueryClient, Multiplexer } from "@harmoniclabs/ouroboros-miniprotocols-ts";
+import { ChainSyncClient, LocalStateQueryClient, Multiplexer, QryAcquired, QryFailure } from "@harmoniclabs/ouroboros-miniprotocols-ts";
 import { Cbor, CborArray, CborBytes, CborObj, CborTag, CborUInt, LazyCborArray, LazyCborObj } from "@harmoniclabs/cbor";
 import { Address, TxBody, TxOutRefStr } from "@harmoniclabs/cardano-ledger-ts";
 import { syncAndAcquire } from "./funcs/syncAndAcquire";
@@ -63,7 +63,16 @@ class WssWorker
 
 export async function main( cfg: MutexoServerConfig )
 {
-    // const webSocketServer = new Worker(dirname + "/wssWorker/webSocketServer.js", { workerData: { cfg, port: 3001 } });
+    // if( logger.canDebug() )
+    // {
+    //     const interval = setInterval(() => {
+    //         const usage = process.memoryUsage();
+    //         logger.debug(
+    //             "memory usage: " + (usage.heapUsed / usage.heapTotal * 100).toFixed(2) + "%" 
+    //         );
+    //     }, 30_000);
+    //     process.on("beforeExit", () => clearInterval( interval ));
+    // }
 
     let usedPorts = [ cfg.httpPort ];
     const servers = await Promise.all(
@@ -84,6 +93,7 @@ export async function main( cfg: MutexoServerConfig )
     );
     const state = new AppState( cfg, servers.map( s => s.worker ) );
 
+    // add listeners that depend on the state (circular dependency)
     for( const server of servers )
     {
         const listener = (msg: any) => {
@@ -113,7 +123,6 @@ export async function main( cfg: MutexoServerConfig )
         connect: () => connect({ path: cfg.nodeSocketPath }),
         protocolType: "node-to-client"
     });
-
 
     const chainSyncClient = new ChainSyncClient( mplexer );
     const lsqClient = new LocalStateQueryClient( mplexer );
@@ -349,7 +358,6 @@ function saveBlockAndEmitEvents( state: AppState, blockData: Uint8Array, wssWork
             outs.push( ref );
             chain.saveTxOut( out, ref, addr );
 
-            logger.debug("saving tx out", ref);
             for( const server of wssWorkers )
             {
                 if( server.isTerminated ) continue;

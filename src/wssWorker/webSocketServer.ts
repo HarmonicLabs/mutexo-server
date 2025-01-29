@@ -519,6 +519,7 @@ async function handleClientReqLock( client: Client, req: ClientReqLock ): Promis
         return;
     }
 
+    logger.debug( port, "lock success msg", toHex( msg ) );
     client.send(msg);
     return;
 

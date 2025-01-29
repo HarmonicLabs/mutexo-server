@@ -1,21 +1,15 @@
 #!/usr/bin/env node
 import { Command } from "commander";
-import { config } from "dotenv";
 import { defaultConfigPath, defaultIngoreDotenv, defaultNetwork, defaultHttpPort, defaultWssPorts, defaultPortRange, defaultThreads, defaultPortRangeStr, defaultAddrs } from "./defaults";
 import { isAddrStr } from "../utils/isAddrStr";
 import { parseCliArgs } from "../MutexoServerConfig/parseCliArgs";
 import { main } from "../main";
-import { readFileSync } from "fs";
 import { CardanoNetworkMagic } from "@harmoniclabs/ouroboros-miniprotocols-ts";
 import { strIsInt } from "../utils/strIsInt";
 import { logger } from "../utils/Logger";
 
-config();
-
 const progName = "mutexo-server";
-const progVersion: string = JSON.parse(
-    readFileSync("./package.json", { encoding: "utf-8" })
-).version;
+const progVersion = "0.1.0";
 
 const program = new Command();
 

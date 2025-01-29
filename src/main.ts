@@ -1,6 +1,6 @@
 import { ChainSyncClient, LocalStateQueryClient, Multiplexer, QryAcquired, QryFailure } from "@harmoniclabs/ouroboros-miniprotocols-ts";
 import { Cbor, CborArray, CborBytes, CborObj, CborTag, CborUInt, LazyCborArray, LazyCborObj } from "@harmoniclabs/cbor";
-import { Address, TxBody, TxOutRefStr } from "@harmoniclabs/cardano-ledger-ts";
+import { Address, AddressStr, TxBody, TxOutRefStr } from "@harmoniclabs/cardano-ledger-ts";
 import { syncAndAcquire } from "./funcs/syncAndAcquire";
 import { toHex } from "@harmoniclabs/uint8array-utils";
 import { isObject } from "@harmoniclabs/obj-utils";
@@ -10,16 +10,13 @@ import { MutexoServerConfig } from "./MutexoServerConfig/MutexoServerConfig";
 import { createHash } from "blake2";
 import { BlockInfos, TxIO } from "./types/BlockInfos";
 import { IMutexoInputJson, IMutexoOutputJson } from "./wssWorker/data";
-import express from "express";
-import { wsAuthIpRateLimit } from "./middlewares/ip";
-import { getClientIp as getClientIpFromReq } from "request-ip";
 import { logger } from "./utils/Logger";
 import { isQueryMessageName } from "./wssWorker/MainWorkerQuery";
 import { AppState } from "./state/AppState";
 import getPort from "get-port";
 import { queryAddrsUtxos } from "./funcs/queryAddrsUtxos";
 import { WssWorker } from "./wssWorker/WssWorker";
-import { isTxOutRefStr } from "./utils/isTxOutRefStr";
+import { setupExpressServer } from "./funcs/setupExpressServer";
 
 export async function main( cfg: MutexoServerConfig )
 {
@@ -150,57 +147,8 @@ export async function main( cfg: MutexoServerConfig )
         state.chain.revertUntilHash( hashStr );
     });
 
-    const app = express();
-    app.use( express.json() );
-    app.set("trust proxy", 1);
-
-    app.get("/wsAuth", wsAuthIpRateLimit, async ( req, res ) => {
-        const ip = getClientIpFromReq( req );
-        if(typeof ip !== "string")
-        {
-            res.status(400).send("invalid ip");
-            return;
-        }
-        
-        if( state.authTokens.has( ip ) )
-        {
-            res
-            .status(400)
-            .send("already authenticated");
-            return;
-        }
-
-        let expectedServer: WssWorker = servers[0];
-        for( const server of servers )
-        {
-            if( server.nClients < expectedServer.nClients )
-            {
-                expectedServer = server;
-            }
-        }
-
-        const token = state.getNewAuthToken( ip, expectedServer );
-
-        res
-        .status(200)
-        .type("application/json")
-        .send({ token, port: expectedServer.port });
-    });
-
-    app.get("/addrs", async ( req, res ) => {
-        res
-        .status(200)
-        .type("application/json")
-        .send( cfg.addrs );
-    });
-
-    // todo resolve utxos
-    // app.get("/resolve", async ( req, res ) => {});
-
-    app.listen( cfg.httpPort, () => {
-        logger.info(`Mutexo http server listening at http://localhost:${cfg.httpPort}`);
-    });
-
+    const app = await setupExpressServer( cfg, state, servers );
+    
     while( true )
     {
         void await chainSyncClient.requestNext();

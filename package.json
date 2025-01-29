@@ -1,6 +1,6 @@
 {
     "name": "@harmoniclabs/mutexo-server",
-    "version": "0.1.0-dev2",
+    "version": "0.1.0-dev3",
     "type": "module",
     "bin": {
         "mutexo-server": "./dist/cli/index.js"
@@ -14,8 +14,8 @@
     },
     "dependencies": {
         "@harmoniclabs/cardano-ledger-ts": "^0.3.1",
-        "@harmoniclabs/cbor": "^1.5.0",
-        "@harmoniclabs/mutexo-messages": "^0.0.18",
+        "@harmoniclabs/cbor": "^1.6.0",
+        "@harmoniclabs/mutexo-messages": "^0.0.20",
         "@harmoniclabs/obj-utils": "^1.0.0",
         "@harmoniclabs/ouroboros-miniprotocols-ts": "^0.0.5-dev0",
         "@harmoniclabs/uint8array-utils": "^1.0.3",

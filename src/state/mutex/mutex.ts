@@ -2,6 +2,7 @@ import { TxOutRefStr } from "@harmoniclabs/cardano-ledger-ts";
 import { Client } from "../../wsServer/Client";
 import { isObject } from "@harmoniclabs/obj-utils";
 import { Chain } from "../data/Chain";
+import { logger } from "../../utils/Logger";
 
 const maxLockTime = 30_000; // 30 seconds
 
@@ -46,9 +47,25 @@ export class Mutex
     {
         if(!isLockerInfo( client )) return [];
 
+        if( !this )
+        {
+            logger.error("this is missing in Mutex class");
+            return [];
+        }
+
         const lockedUtxos: TxOutRefStr[] = [];
         for( const ref of refs )
         {
+            if( !this )
+            {
+                logger.error("this is missing in Mutex class");
+                return [];
+            }
+            if( !this.chain )
+            {
+                logger.error("this.chain is missing in Mutex class");
+                return [];
+            }
             if( !this.chain.canMutex( ref ) ) continue;
 
             const currentLocker = this.blockers.get( ref );
@@ -73,6 +90,7 @@ export class Mutex
         }
         else
         {
+            logger.warn("setting timeout unlock");
             setTimeout( unlockCallback.bind({ self: this, client, lockedUtxos }), maxLockTime);
         }
 
@@ -85,6 +103,10 @@ export class Mutex
      */
     _unlock( client: LockerInfo, ref: TxOutRefStr ): boolean
     {
+        if( !this )
+        {
+            logger.error("this is missing in Mutex class");
+        }
         // only the current locker can unlock the utxo
         if( !this.isCurrentLocker( client, ref ) ) return false;
 
@@ -94,6 +116,10 @@ export class Mutex
 
     unlock( client: LockerInfo, refs: TxOutRefStr[] ): TxOutRefStr[]
     {
+        if( !this )
+        {
+            logger.error("this is missing in Mutex class");
+        }
         return refs.filter( ref => this._unlock( client, ref ) );
     }
 
@@ -110,6 +136,7 @@ interface UnlockCallbackEnv {
 }
 function unlockCallback( this: UnlockCallbackEnv )
 {
+    logger.info("unlockCallback");
     const { self, client, lockedUtxos } = this;
     self.unlock( client, lockedUtxos );
 }

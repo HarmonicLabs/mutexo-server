@@ -4,6 +4,7 @@ import { fileURLToPath } from "node:url";
 import { MutexoServerConfig } from "../MutexoServerConfig/MutexoServerConfig";
 import { QueryRequest } from "./MainWorkerQuery";
 import { Worker } from "node:worker_threads";
+import { logger } from "../utils/Logger";
 
 const dirname = globalThis.__dirname ??
     getDirname( fileURLToPath( import.meta.url ) ) ??
@@ -35,6 +36,10 @@ export class WssWorker
 
         this.isTerminated = false;
         this.worker.on("exit", () => { (this as any).isTerminated = true; });
+        this.worker.on("error", ( err )=> {
+            logger.error( "Error in WssWorker: ", err, "server", self.port );
+            process.exit(1);
+        });
     }
 
     terminate()

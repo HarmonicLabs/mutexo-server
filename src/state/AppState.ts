@@ -27,6 +27,11 @@ export class AppState
     )
     {
         this.followedAddrs = new Set( config.addrs.map( SharedAddrStr.get ) );
+        if( !this )
+        {
+            logger.error("this is missing in AppState class");
+            return;
+        }
         this.chain = new Chain();
         this.mutex = new Mutex( this.chain );
     }
@@ -112,6 +117,11 @@ export class AppState
         if( isResolveUtxosQueryRequest( msg ) )
         {
             const [ refs ] = msg.args;
+            if( !this )
+            {
+                logger.error("this is missing in AppState class");
+                return;
+            }
             const utxos = this.chain.resolveUtxos( refs );
             this._sendQueryResult( wssWorker, msg.id, utxos );
             return;
@@ -130,9 +140,10 @@ export class AppState
             {
                 for( const worker of this.wssWorkers )
                 {
+                    const self = this;
                     worker.postMessage({
                         type: "lock",
-                        data: lockedRefs.map( this._getMutexEventInfos )
+                        data: lockedRefs.map( self._getMutexEventInfos.bind( self ) )
                     });
                 }
             }
@@ -162,6 +173,11 @@ export class AppState
 
     private _getMutexEventInfos( ref: TxOutRefStr ): MutexEventInfos
     {
+        if( !this )
+        {
+            logger.error("this is missing in AppState class, _getMutexEventInfos");
+            throw new Error("this is missing in AppState class");
+        }
         return {
             ref,
             addr: this.chain.utxoSet.get( ref )!.addr.toString()

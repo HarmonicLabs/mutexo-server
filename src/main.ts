@@ -31,6 +31,11 @@ export async function main( cfg: MutexoServerConfig )
     //     process.on("beforeExit", () => clearInterval( interval ));
     // }
 
+    process.on("uncaughtException", ( ...args ) => {
+        logger.error("uncaughtException", ...args);
+        process.exit(1);
+    });
+
     let usedPorts = [ cfg.httpPort ];
     const servers = await Promise.all(
         new Array( cfg.threads - 1 )
@@ -56,20 +61,29 @@ export async function main( cfg: MutexoServerConfig )
         const listener = (msg: any) => {
             if( !isObject( msg ) ) return;
 
-            if( isQueryMessageName( msg.type ) )
-            {
-                if( !server.isTerminated )
-                    state.handleQueryMessage( msg, server );
-                return;
-            }
-            if( msg.type === "terminateClient" )
-            {
-                logger.debug("terminating client");
-                if( state.authTokens.delete( msg.ip ) )
+            logger.debug("received message", msg, "from server", server.port);
+            try {
+                if( isQueryMessageName( msg.type ) )
                 {
-                    server.nClients--;
+                    if( !state ) return;
+                    if( !server.isTerminated )
+                    {
+                        state.handleQueryMessage( msg, server );
+                    }
+                    return;
                 }
-                return;
+                if( msg.type === "terminateClient" )
+                {
+                    logger.debug("terminating client");
+                    if( !state ) return;
+                    if( state.authTokens.delete( msg.ip ) )
+                    {
+                        server.nClients--;
+                    }
+                    return;
+                }
+            } catch( e ) {
+                logger.error( e );
             }
         };
         // add listener
@@ -121,6 +135,11 @@ export async function main( cfg: MutexoServerConfig )
         {
             const addr = utxo.resolved.address.toString();
             const ref = utxo.utxoRef.toString();
+            if( !state )
+            {
+                logger.error("state is missing");
+                return;
+            }
             state.chain.saveTxOut( utxo.resolved, ref, addr );
         }
     }
@@ -144,6 +163,10 @@ export async function main( cfg: MutexoServerConfig )
         
         tip = rollBack.tip.point;
         const hashStr = toHex( rollBack.point.blockHeader.hash );
+        if( !state )
+        {
+            logger.error("state is missing, rollBackwards");
+        }
         state.chain.revertUntilHash( hashStr );
     });
 
@@ -216,6 +239,11 @@ function saveBlockAndEmitEvents( state: AppState, blockData: Uint8Array, wssWork
 
     const txsBodies = lazyTxsBodies.array;
 
+    if( !state )
+    {
+        logger.error("state is missing, saveBlockAndEmitEvents");
+        return;
+    }
     const chain = state.chain;
 
     const prevHash = chain.tip;

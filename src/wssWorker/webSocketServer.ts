@@ -1,7 +1,7 @@
 import { AddrFilter, ClientReq, ClientReqFree, ClientReqLock, ClientSub, ClientUnsub, Close, MutexoError, MutexFailure, MutexoFree, MutexoInput, MutexoLock, MutexoOutput, MutexSuccess, UtxoFilter, MutexOp, SubSuccess, clientReqFromCborObj, mutexoEventIndexToName, MutexoEventIndex } from "@harmoniclabs/mutexo-messages";
 import { getWsClientIp, setWsClientIp } from "../wsServer/clientProps";
 import { Address, AddressStr, forceTxOutRef, forceTxOutRefStr, TxOut, TxOutRefStr } from "@harmoniclabs/cardano-ledger-ts";
-import { fromHex } from "@harmoniclabs/uint8array-utils";
+import { fromHex, toHex } from "@harmoniclabs/uint8array-utils";
 import { getClientIp as getClientIpFromReq } from "request-ip";
 import { RawData, WebSocket, WebSocketServer } from "ws";
 import { isObject } from "@harmoniclabs/obj-utils";
@@ -49,6 +49,7 @@ const unknownUnsubEvtByAddrMsg = new MutexoError({ errorCode: 8 }).toCbor().toBu
 const unknownUnsubEvtByUTxORefMsg = new MutexoError({ errorCode: 9 }).toCbor().toBuffer();
 const unknownUnsubEvtMsg = new MutexoError({ errorCode: 10 }).toCbor().toBuffer();
 const unknownSubFilter = new MutexoError({ errorCode: 11 }).toCbor().toBuffer();
+const decodeErrorMessage = new MutexoError({ errorCode: 12 }).toCbor().toBuffer();
 
 const maxPayload = 512;
 
@@ -265,20 +266,40 @@ async function handleClientMessage( this: WebSocket, data: RawData ): Promise<vo
     // NO big messages
     if( bytes.length > maxPayload ) return;
 
-    const req: ClientReq = clientReqFromCborObj( Cbor.parse( bytes ) );
+    logger.debug("server", port, "received message from", client.ip, toHex( bytes ));
 
-    if      ( req instanceof Close )            return terminateClient( client );
-    else if ( req instanceof ClientSub )        return handleClientSub( client, req );
-    else if ( req instanceof ClientUnsub )      return handleClientUnsub( client, req );
-    else if ( req instanceof ClientReqFree )    return handleClientReqFree( client, req );
-    else if ( req instanceof ClientReqLock )    return handleClientReqLock( client, req );
+    let req: ClientReq;
+    try {
+        req = clientReqFromCborObj( Cbor.parse( bytes ) );
+    } catch ( e ) {
+        client.send( decodeErrorMessage );
+        return;
+    }
+
+    // logger.debug("server", port, req);
+
+    try {
+        if      ( req instanceof Close )            return terminateClient( client );
+        else if ( req instanceof ClientSub )        return handleClientSub( client, req );
+        else if ( req instanceof ClientUnsub )      return handleClientUnsub( client, req );
+        else if ( req instanceof ClientReqFree )    return handleClientReqFree( client, req );
+        else if ( req instanceof ClientReqLock )    return handleClientReqLock( client, req );
+    } catch ( e ) {
+        logger.error("server", port, "error handling request from", client.ip, e?.message ?? e );
+    }
 
     return;
 }
 
 async function handleClientSub( client: Client, req: ClientSub ): Promise<void> 
 {        
-    const { id, chainEventIndex, filters } = req;
+    const { id, chainEventIndex } = req;
+    let filters = req.filters;
+
+    if( filters.length <= 0 )
+    {
+        filters = cfg.addrs.map( addr => new AddrFilter({ addr }) );
+    }
 
     for( const filter of filters ) 
     {
@@ -446,6 +467,7 @@ async function handleClientUnsub( client: Client, req: ClientUnsub ): Promise<vo
 
 async function handleClientReqLock( client: Client, req: ClientReqLock ): Promise<void> 
 {
+    logger.debug("server", port, "handling lock request", req);
     const { id, utxoRefs } = req;
 
     let required = req.required;

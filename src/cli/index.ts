@@ -1,3 +1,4 @@
+#!/usr/bin/env node
 import { Command } from "commander";
 import { config } from "dotenv";
 import { defaultConfigPath, defaultIngoreDotenv, defaultNetwork, defaultHttpPort, defaultWssPorts, defaultPortRange, defaultThreads, defaultPortRangeStr, defaultAddrs } from "./defaults";

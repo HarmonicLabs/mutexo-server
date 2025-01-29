@@ -38,7 +38,6 @@ export class WssWorker
         this.worker.on("exit", () => { (this as any).isTerminated = true; });
         this.worker.on("error", ( err )=> {
             logger.error( "Error in WssWorker: ", err, "server", self.port );
-            process.exit(1);
         });
     }
 

@@ -61,7 +61,6 @@ export async function main( cfg: MutexoServerConfig )
         const listener = (msg: any) => {
             if( !isObject( msg ) ) return;
 
-            logger.debug("received message", msg, "from server", server.port);
             try {
                 if( isQueryMessageName( msg.type ) )
                 {

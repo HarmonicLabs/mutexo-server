@@ -90,7 +90,6 @@ export class Mutex
         }
         else
         {
-            logger.warn("setting timeout unlock");
             setTimeout( unlockCallback.bind({ self: this, client, lockedUtxos }), maxLockTime);
         }
 

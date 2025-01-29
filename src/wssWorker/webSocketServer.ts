@@ -1,4 +1,4 @@
-import { AddrFilter, ClientReq, ClientReqFree, ClientReqLock, ClientSub, ClientUnsub, Close, MutexoError, MutexFailure, MutexoFree, MutexoInput, MutexoLock, MutexoOutput, MutexSuccess, UtxoFilter, MutexOp, SubSuccess, clientReqFromCborObj, mutexoEventIndexToName, MutexoEventIndex } from "@harmoniclabs/mutexo-messages";
+import { AddrFilter, ClientReq, ClientReqFree, ClientReqLock, ClientSub, ClientUnsub, Close, MutexoError, MutexFailure, MutexoFree, MutexoInput, MutexoLock, MutexoOutput, MutexSuccess, UtxoFilter, MutexOp, SubSuccess, clientReqFromCborObj, mutexoEventIndexToName, MutexoEventIndex, IMutexSuccess } from "@harmoniclabs/mutexo-messages";
 import { getWsClientIp, setWsClientIp } from "../wsServer/clientProps";
 import { Address, AddressStr, forceTxOutRef, forceTxOutRefStr, TxOut, TxOutRefStr } from "@harmoniclabs/cardano-ledger-ts";
 import { fromHex, toHex } from "@harmoniclabs/uint8array-utils";
@@ -505,11 +505,19 @@ async function handleClientReqLock( client: Client, req: ClientReqLock ): Promis
     }
     // else
 
-    const msg = new MutexSuccess({
+    const raw: IMutexSuccess = {
         id,
         mutexOp: MutexOp.MutexoLock,
         utxoRefs: locked.map( forceTxOutRef ),
-    }).toCbor().toBuffer();
+    };
+    let msg: Uint8Array | undefined = undefined;
+    try {
+        msg = new MutexSuccess( raw ).toCbor().toBuffer();
+    }
+    catch ( e ) {
+        logger.error(port, "error creating lock success message", e, raw);
+        return;
+    }
 
     client.send(msg);
     return;

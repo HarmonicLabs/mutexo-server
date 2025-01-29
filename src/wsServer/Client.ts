@@ -1,6 +1,6 @@
 import { AddressStr, TxOutRefStr } from "@harmoniclabs/cardano-ledger-ts";
 import { ClientSubs, createClientSubs } from "./ClientSubs";
-import { getWsClientIp } from "./clientProps";
+import { getWsClientIp, setWsClientIp } from "./clientProps";
 import type { WebSocket } from "ws";
 import { LockerInfo } from "../state/mutex/mutex";
 
@@ -18,9 +18,18 @@ export class Client
 
     readonly lockedUtxos: Set<TxOutRefStr>;
 
+    get ip(): string
+    {
+        if( typeof this._ip !== "string" )
+        {
+            this._ip = getWsClientIp( this.ws );
+        }
+        return this._ip;
+    }
+
     constructor(
         readonly ws: WebSocket,
-        readonly ip: string
+        private _ip: string
     )
     {
         const {
@@ -52,8 +61,12 @@ export class Client
         };
     }
 
-    static fromWs( ws: WebSocket ): Client
+    static fromWs( ws: WebSocket, ip?: string ): Client
     {
+        if( typeof ip === "string" )
+        {
+            setWsClientIp( ws, ip );
+        }
         if(!((ws as any).MUTEXO_CLIENT_INSTANCE instanceof Client))
         {
             (ws as any).MUTEXO_CLIENT_INSTANCE = new Client(

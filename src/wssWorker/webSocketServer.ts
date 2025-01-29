@@ -1,5 +1,5 @@
 import { AddrFilter, ClientReq, ClientReqFree, ClientReqLock, ClientSub, ClientUnsub, Close, MutexoError, MutexFailure, MutexoFree, MutexoInput, MutexoLock, MutexoOutput, MutexSuccess, UtxoFilter, MutexOp, SubSuccess, clientReqFromCborObj, mutexoEventIndexToName, MutexoEventIndex } from "@harmoniclabs/mutexo-messages";
-import { setWsClientIp } from "../wsServer/clientProps";
+import { getWsClientIp, setWsClientIp } from "../wsServer/clientProps";
 import { Address, AddressStr, forceTxOutRef, forceTxOutRefStr, TxOut, TxOutRefStr } from "@harmoniclabs/cardano-ledger-ts";
 import { fromHex } from "@harmoniclabs/uint8array-utils";
 import { getClientIp as getClientIpFromReq } from "request-ip";
@@ -25,7 +25,8 @@ const cfgAddrs = new Set( cfg.addrs );
 const port = workerData.port as number;
 
 logger.setLogLevel( cfg.logLevel );
-logger.useColors( !cfg.disableLogColors )
+// logger.useColors( !cfg.disableLogColors )
+logger.useColors( false )
 
 function isFollowingAddr( addr: AddressStr ): boolean
 {
@@ -59,6 +60,7 @@ logger.info(
 const pingInterval = setInterval(
     () => {
         const clients = wsServer.clients;
+        logger.info(`${clients.size} clients listneing on port ${port}`);
         for(const client of clients) 
         {
             if( !isAlive( client ) )
@@ -72,7 +74,7 @@ const pingInterval = setInterval(
             client.ping();
         }
     },
-    30_000
+    60_000
 );
 
 const mainWorker = new MainWorkerQuery( parentPort );
@@ -146,11 +148,14 @@ wsServer.on("connection", async ( ws, req ) => {
         return;
     }
 
+    logger.debug("verified client", ip);
+    new Promise( r => setTimeout( r, 1000 ) );
+
     // sets `MUTEXO_CLIENT_INSTANCE` on ws
     const client = Client.fromWs( ws );
 
     setWsClientIp( ws, ip );
-    mainWorker.incrementLeakingBucket( ip );
+    mainWorker.incrementLeakingBucket( client.ip );
 
     // heartbeat
     ( ws as any ).isAlive = true;
@@ -227,6 +232,11 @@ async function terminateClient( client: Client )
 {
     unsubAll( client );
 
+    parentPort?.postMessage({
+        type: "terminateClient",
+        data: client.ip
+    });
+
     client.terminate();
     delete (client.ws as any).MUTEXO_CLIENT_INSTANCE;
 }
@@ -241,6 +251,7 @@ async function handleClientMessage( this: WebSocket, data: RawData ): Promise<vo
 {
     const ws = this;
     const client = Client.fromWs( ws );
+    // const ip = client.ip ?? getWsClientIp( ws );
     // heartbeat
     ( ws as any ).isAlive = true;
 

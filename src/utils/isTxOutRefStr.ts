@@ -11,6 +11,6 @@ export function isTxOutRefStr( str: any ): str is TxOutRefStr
     return (
         rest.length === 0 &&
         strIsInt( idx ) &&
-        isHex( hash, 64 )
+        isHex( hash ) && hash.length === 64
     );
 }

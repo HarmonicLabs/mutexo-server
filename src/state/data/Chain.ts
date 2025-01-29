@@ -45,7 +45,7 @@ export class Chain
         return {
             ref,
             out: this.utxoSet.get( ref )?.bytes
-        }
+        };
     }
 
     resolveUtxos( refs: TxOutRefStr[] ): ResolvedSerializedUtxo[]

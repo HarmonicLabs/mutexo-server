@@ -9,6 +9,8 @@ import { AddressStr, TxOutRefStr } from "@harmoniclabs/cardano-ledger-ts";
 import { MutexEventInfos } from "../wsServer/MutexEventInfos";
 import { MutexoServerConfig } from "../MutexoServerConfig/MutexoServerConfig";
 import { SharedAddrStr } from "../utils/SharedAddrStr";
+import { logger } from "../utils/Logger";
+import { WssWorker } from "../wssWorker/WssWorker";
 
 const sign = jwt.sign;
 
@@ -44,7 +46,7 @@ export class AppState
         return result;
     }
 
-    getNewAuthToken( ip: string, wsServerPort: number ): string
+    getNewAuthToken( ip: string, server: WssWorker ): string
     {
         let secret = new Uint8Array(32);
         let tokenStr: string;
@@ -60,11 +62,16 @@ export class AppState
             );
         } while( this.authTokens.has( tokenStr ) );
     
+        const wsServerPort = server.port;
         this.authTokens.set( tokenStr, { secret, wsServerPort } );
+        server.nClients++;
 
         // expires
         setTimeout(() => {
-            this.authTokens.delete( tokenStr );
+            if( this.authTokens.delete( tokenStr ) )
+            {
+                server.nClients--;
+            }
         }, expirationSeconds * 1000);
 
         return tokenStr;
@@ -81,8 +88,9 @@ export class AppState
         });
     }
 
-    handleQueryMessage( msg: QueryRequest, wssWorker: Worker )
+    handleQueryMessage( msg: QueryRequest, server: WssWorker )
     {
+        const wssWorker = server.worker;
         if( isIncrLeakingBucketQueryRequest( msg ) )
         {
             const [ ip ] = msg.args;
@@ -94,6 +102,10 @@ export class AppState
         {
             const [ token ] = msg.args;
             const validationInfos = this.authTokens.get( token );
+            if( this.authTokens.delete( token ) )
+            {
+                server.nClients--;
+            }
             this._sendQueryResult( wssWorker, msg.id, validationInfos );
             return;
         }
@@ -144,6 +156,7 @@ export class AppState
             return;
         }
         
+        logger.error( msg );
         throw new Error( "Unknown query" );
     }
 

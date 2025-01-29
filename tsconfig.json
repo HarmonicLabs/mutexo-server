@@ -66,7 +66,7 @@
         "forceConsistentCasingInFileNames": true,  /* Disallow inconsistently-cased references to the same file. */
         "resolveJsonModule": true,              /* Include modules imported with '.json' extension */
     },
-    "include": ["./src/**/*", "src/cli/**/*", "src/state/utxoFreeEvt/.ts", "src/state/utxoSpentEvt/.ts"],
+    "include": ["./src/**/*"],
     "exclude": [
         "**/__tests__/**/*",
         "**/*.test.ts",

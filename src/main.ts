@@ -14,52 +14,12 @@ import express from "express";
 import { wsAuthIpRateLimit } from "./middlewares/ip";
 import { getClientIp as getClientIpFromReq } from "request-ip";
 import { logger } from "./utils/Logger";
-import { isQueryMessageName, QueryRequest } from "./wssWorker/MainWorkerQuery";
+import { isQueryMessageName } from "./wssWorker/MainWorkerQuery";
 import { AppState } from "./state/AppState";
 import getPort from "get-port";
-import { dirname as getDirname } from "node:path";
-import { fileURLToPath } from "node:url";
 import { queryAddrsUtxos } from "./funcs/queryAddrsUtxos";
-
-const dirname = globalThis.__dirname ??
-    getDirname( fileURLToPath( import.meta.url ) ) ??
-    process.cwd();
-
-class WssWorker
-{
-    nClients: number;
-    readonly worker: Worker;
-    readonly isTerminated: boolean = false;
-    
-    _workerListener: ( msg: QueryRequest, wssWorker: Worker ) => void;
-
-    constructor(
-        readonly cfg: MutexoServerConfig,
-        readonly port: number
-    )
-    {
-        this.nClients = 0;
-
-        this.worker = new Worker(
-            dirname + "/wssWorker/webSocketServer.js",
-            { workerData: { cfg, port } }
-        );
-
-        const self = this;
-        this._workerListener = () => {};
-
-        this.isTerminated = false;
-        this.worker.on("exit", () => { (this as any).isTerminated = true; });
-    }
-
-    terminate()
-    {
-        if(typeof this._workerListener === "function") this.worker.off("message", this._workerListener);
-        if( !this.isTerminated ) return;
-        this.worker.terminate();
-        (this as any).isTerminated = true;
-    }
-}
+import { WssWorker } from "./wssWorker/WssWorker";
+import { isTxOutRefStr } from "./utils/isTxOutRefStr";
 
 export async function main( cfg: MutexoServerConfig )
 {
@@ -102,7 +62,16 @@ export async function main( cfg: MutexoServerConfig )
             if( isQueryMessageName( msg.type ) )
             {
                 if( !server.isTerminated )
-                    state.handleQueryMessage( msg, server.worker );
+                    state.handleQueryMessage( msg, server );
+                return;
+            }
+            if( msg.type === "terminateClient" )
+            {
+                logger.debug("terminating client");
+                if( state.authTokens.delete( msg.ip ) )
+                {
+                    server.nClients--;
+                }
                 return;
             }
         };
@@ -189,29 +158,44 @@ export async function main( cfg: MutexoServerConfig )
         const ip = getClientIpFromReq( req );
         if(typeof ip !== "string")
         {
-            res.status(500).send("invalid ip");
+            res.status(400).send("invalid ip");
+            return;
+        }
+        
+        if( state.authTokens.has( ip ) )
+        {
+            res
+            .status(400)
+            .send("already authenticated");
             return;
         }
 
-        let leastClients = Infinity;
-        let port = cfg.httpPort;
-
+        let expectedServer: WssWorker = servers[0];
         for( const server of servers )
         {
-            if( server.nClients < leastClients )
+            if( server.nClients < expectedServer.nClients )
             {
-                leastClients = server.nClients;
-                port = server.port;
+                expectedServer = server;
             }
         }
 
-        const token = state.getNewAuthToken( ip, port );
+        const token = state.getNewAuthToken( ip, expectedServer );
 
         res
         .status(200)
         .type("application/json")
-        .send({ token, port });
+        .send({ token, port: expectedServer.port });
     });
+
+    app.get("/addrs", async ( req, res ) => {
+        res
+        .status(200)
+        .type("application/json")
+        .send( cfg.addrs );
+    });
+
+    // todo resolve utxos
+    // app.get("/resolve", async ( req, res ) => {});
 
     app.listen( cfg.httpPort, () => {
         logger.info(`Mutexo http server listening at http://localhost:${cfg.httpPort}`);

@@ -3,6 +3,7 @@ import { MessagePort } from "node:worker_threads";
 import { LockerInfo } from "../state/mutex/mutex";
 import { Client } from "../wsServer/Client";
 import { AuthValidationInfos } from "../state/AppState";
+import { logger } from "../utils/Logger";
 
 export type MainWorkerQueryName
     = "incrementLeakingBucket"
@@ -35,7 +36,7 @@ export function isIncrLeakingBucketQueryRequest( obj: any ): obj is QueryRequest
 
 export function isGetAuthTokenSecretQueryRequest( obj: any ): obj is QueryRequest<"getAuthValidationInfosByToken">
 {
-    return obj.type === "getAuthToken";
+    return obj.type === "getAuthValidationInfosByToken";
 }
 
 export function isResolveUtxosQueryRequest( obj: any ): obj is QueryRequest<"resolveUtxos">
@@ -116,6 +117,12 @@ export class MainWorkerQuery
 
     incrementLeakingBucket( ip: string ): Promise<boolean>
     {
+        if( typeof ip !== "string" )
+        {
+            logger.warn("incrementLeakingBucket: invalid ip", ip );
+            return Promise.resolve( false );
+        }
+        logger.debug("incrementLeakingBucket: ", ip );
         return this._send( "incrementLeakingBucket", [ ip ] );
     }
 

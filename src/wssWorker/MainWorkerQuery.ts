@@ -122,7 +122,6 @@ export class MainWorkerQuery
             logger.warn("incrementLeakingBucket: invalid ip", ip );
             return Promise.resolve( false );
         }
-        logger.debug("incrementLeakingBucket: ", ip );
         return this._send( "incrementLeakingBucket", [ ip ] );
     }
 

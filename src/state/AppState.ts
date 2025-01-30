@@ -96,6 +96,7 @@ export class AppState
     handleQueryMessage( msg: QueryRequest, server: WssWorker )
     {
         const wssWorker = server.worker;
+        const self = this;
         if( isIncrLeakingBucketQueryRequest( msg ) )
         {
             const [ ip ] = msg.args;
@@ -138,13 +139,13 @@ export class AppState
             this._sendQueryResult( wssWorker, msg.id, lockedRefs );
             if( lockedRefs.length >= required )
             {
+                const evt = {
+                    type: "lock",
+                    data: lockedRefs.map( self._getMutexEventInfos.bind( self ) )
+                };
                 for( const worker of this.wssWorkers )
                 {
-                    const self = this;
-                    worker.postMessage({
-                        type: "lock",
-                        data: lockedRefs.map( self._getMutexEventInfos.bind( self ) )
-                    });
+                    worker.postMessage( evt );
                 }
             }
             return;
@@ -156,12 +157,13 @@ export class AppState
             this._sendQueryResult( wssWorker, msg.id, unlocked);
             if( unlocked.length > 0 )
             {
+                const evt = {
+                    type: "free",
+                    data: unlocked.map( self._getMutexEventInfos.bind( self ) )
+                };
                 for( const worker of this.wssWorkers )
                 {
-                    worker.postMessage({
-                        type: "free",
-                        data: unlocked.map( this._getMutexEventInfos )
-                    });
+                    worker.postMessage( evt );
                 }
             }
             return;

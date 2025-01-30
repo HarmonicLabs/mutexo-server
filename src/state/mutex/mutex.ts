@@ -135,7 +135,6 @@ interface UnlockCallbackEnv {
 }
 function unlockCallback( this: UnlockCallbackEnv )
 {
-    logger.info("unlockCallback");
     const { self, client, lockedUtxos } = this;
     self.unlock( client, lockedUtxos );
 }

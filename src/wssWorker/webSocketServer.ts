@@ -110,8 +110,6 @@ wsServer.on("connection", async ( ws, req ) => {
         return;
     }
 
-    logger.debug("client connection from", ip);
-
     const url = new URL(req.url ?? "", "ws://" + req.headers.host + "/");
     const token = url.searchParams.get("token");
 
@@ -150,7 +148,6 @@ wsServer.on("connection", async ( ws, req ) => {
     }
 
     logger.debug("verified client", ip);
-    new Promise( r => setTimeout( r, 1000 ) );
 
     // sets `MUTEXO_CLIENT_INSTANCE` on ws
     const client = Client.fromWs( ws );
@@ -266,17 +263,17 @@ async function handleClientMessage( this: WebSocket, data: RawData ): Promise<vo
     // NO big messages
     if( bytes.length > maxPayload ) return;
 
-    logger.debug("server", port, "received message from", client.ip, toHex( bytes ));
 
     let req: ClientReq;
     try {
         req = clientReqFromCborObj( Cbor.parse( bytes ) );
     } catch ( e ) {
+        logger.debug( port, client.ip, toHex( bytes ));
         client.send( decodeErrorMessage );
         return;
     }
 
-    // logger.debug("server", port, req);
+    logger.debug( port, client.ip, req);
 
     try {
         if      ( req instanceof Close )            return terminateClient( client );
@@ -285,7 +282,8 @@ async function handleClientMessage( this: WebSocket, data: RawData ): Promise<vo
         else if ( req instanceof ClientReqFree )    return handleClientReqFree( client, req );
         else if ( req instanceof ClientReqLock )    return handleClientReqLock( client, req );
     } catch ( e ) {
-        logger.error("server", port, "error handling request from", client.ip, e?.message ?? e );
+        logger.error( port, client.ip, e?.message ?? e );
+        return;
     }
 
     return;
@@ -467,7 +465,6 @@ async function handleClientUnsub( client: Client, req: ClientUnsub ): Promise<vo
 
 async function handleClientReqLock( client: Client, req: ClientReqLock ): Promise<void> 
 {
-    logger.debug("server", port, "handling lock request", req);
     const { id, utxoRefs } = req;
 
     let required = req.required;

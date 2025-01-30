@@ -20,22 +20,6 @@ import { setupExpressServer } from "./funcs/setupExpressServer";
 
 export async function main( cfg: MutexoServerConfig )
 {
-    // if( logger.canDebug() )
-    // {
-    //     const interval = setInterval(() => {
-    //         const usage = process.memoryUsage();
-    //         logger.debug(
-    //             "memory usage: " + (usage.heapUsed / usage.heapTotal * 100).toFixed(2) + "%" 
-    //         );
-    //     }, 30_000);
-    //     process.on("beforeExit", () => clearInterval( interval ));
-    // }
-
-    process.on("uncaughtException", ( ...args ) => {
-        logger.error("uncaughtException", ...args);
-        process.exit(1);
-    });
-
     let usedPorts = [ cfg.httpPort ];
     const servers = await Promise.all(
         new Array( cfg.threads - 1 )
@@ -74,11 +58,7 @@ export async function main( cfg: MutexoServerConfig )
                 if( msg.type === "terminateClient" )
                 {
                     logger.debug("terminating client");
-                    if( !state ) return;
-                    if( state.authTokens.delete( msg.ip ) )
-                    {
-                        server.nClients--;
-                    }
+                    server.nClients--;
                     return;
                 }
             } catch( e ) {
